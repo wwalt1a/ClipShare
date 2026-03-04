@@ -33,9 +33,11 @@ class _ForwardServerEditDialogState extends State<ForwardServerEditDialog> {
   final tag = "ForwardServerEditDialog";
   final hostEditor = TextEditingController();
   final portEditor = TextEditingController();
+  final apiPortEditor = TextEditingController(text: "80");
   final keyEditor = TextEditingController();
   String? hostErrText;
   String? portErrText;
+  String? apiPortErrText;
   String? keyErrText;
   bool useKey = false;
   bool detecting = false;
@@ -50,6 +52,7 @@ class _ForwardServerEditDialogState extends State<ForwardServerEditDialog> {
   void reset(ForwardServerConfig config) {
     hostEditor.text = config.host;
     portEditor.text = config.port.toString();
+    apiPortEditor.text = config.apiPort.toString();
     if (config.key != null) {
       keyEditor.text = config.key!;
       useKey = true;
@@ -66,6 +69,11 @@ class _ForwardServerEditDialogState extends State<ForwardServerEditDialog> {
     return portErrText == null;
   }
 
+  bool checkApiPortEditor() {
+    apiPortErrText = !apiPortEditor.text.isPort ? TranslationKey.pleaseInputValidPort.tr : null;
+    return apiPortErrText == null;
+  }
+
   bool checkKeyEditor() {
     if (useKey == false) return true;
     keyErrText = keyEditor.text == "" ? TranslationKey.pleaseInputKey.tr : null;
@@ -75,6 +83,7 @@ class _ForwardServerEditDialogState extends State<ForwardServerEditDialog> {
   bool checkIsValid() {
     var isValid = checkHostEditor();
     isValid &= checkPortEditor();
+    isValid &= checkApiPortEditor();
     isValid &= checkKeyEditor();
     setState(() {});
     return isValid;
@@ -311,6 +320,28 @@ class _ForwardServerEditDialogState extends State<ForwardServerEditDialog> {
                   ),
                 ],
               ),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      enabled: !detecting,
+                      controller: apiPortEditor,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        labelText: "API 端口",
+                        hintText: "80",
+                        helperText: "服务端 WEB_PORT，默认 80",
+                        border: const OutlineInputBorder(),
+                        errorText: apiPortErrText,
+                      ),
+                      onChanged: (str) {
+                        checkApiPortEditor();
+                        setState(() {});
+                      },
+                    ),
+                  ),
+                ],
+              ),
               Container(
                 margin: const EdgeInsets.only(bottom: 8),
                 child: CheckboxListTile(
@@ -390,13 +421,14 @@ class _ForwardServerEditDialogState extends State<ForwardServerEditDialog> {
                     onPressed: detecting
                         ? null
                         : () {
-                            if (hostErrText != null || portErrText != null || keyErrText != null) {
+                            if (hostErrText != null || portErrText != null || apiPortErrText != null || keyErrText != null) {
                               return;
                             }
                             widget.onOk(
                               ForwardServerConfig(
                                 host: hostEditor.text,
                                 port: portEditor.text.toInt(),
+                                apiPort: apiPortEditor.text.toInt(),
                                 key: useKey ? keyEditor.text : null,
                               ),
                             );

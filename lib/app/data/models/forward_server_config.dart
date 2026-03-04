@@ -4,16 +4,18 @@ class ForwardServerConfig {
   String host;
   int port;
   String? key;
+  /// HTTP API 端口，默认 80。若通过反代或自定义端口暴露，需与服务端 WEB_PORT 一致
+  int apiPort;
 
   String get server => "$host:$port";
 
-  /// HTTP API 默认走 80 端口，不需要用户额外配置
-  String get apiBase => "http://$host/api/clip";
+  String get apiBase => "http://$host:$apiPort/api/clip";
 
   ForwardServerConfig({
     required this.host,
     required this.port,
     this.key,
+    this.apiPort = 80,
   });
 
   factory ForwardServerConfig.fromJson(Map<String, dynamic> data) {
@@ -26,6 +28,7 @@ class ForwardServerConfig {
       host: data["host"],
       port: data["port"],
       key: key,
+      apiPort: data["apiPort"] ?? 80,
     );
   }
 
@@ -34,6 +37,7 @@ class ForwardServerConfig {
       "host": host,
       "port": port,
       "key": key,
+      "apiPort": apiPort,
     };
   }
 
