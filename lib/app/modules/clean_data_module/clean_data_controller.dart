@@ -22,6 +22,7 @@ import 'package:clipshare/app/services/db_service.dart';
 import 'package:clipshare/app/services/device_service.dart';
 import 'package:clipshare/app/services/transport/connection_registry_service.dart';
 import 'package:clipshare/app/services/transport/socket_service.dart';
+import 'package:clipshare/app/services/transport/server_sync_service.dart';
 import 'package:clipshare/app/utils/cron_util.dart';
 import 'package:clipshare/app/utils/extensions/list_extension.dart';
 import 'package:clipshare/app/utils/extensions/number_extension.dart';
@@ -402,6 +403,11 @@ class CleanDataController extends GetxController implements DeviceRemoveListener
     final parts = histories.partition(1000);
     for (var part in parts) {
       final ids = part.map((item) => item.id).toList().cast<int>();
+      // 收集服务器条目 ID，用于同步删除到服务器
+      final serverIds = part
+          .where((item) => item.serverItemId != null)
+          .map((item) => item.serverItemId!)
+          .toList();
       //先删除操作记录
       await dbService.opRecordDao.deleteByDataIds(ids.map((item) => item.toString()).toList());
       //删除同步记录
@@ -412,6 +418,10 @@ class CleanDataController extends GetxController implements DeviceRemoveListener
       await dbService.historyDao.deleteByIds(ids, uid);
       //移除未使用的剪贴板来源信息
       await sourceService.removeNotUsed();
+      // 同步删除到服务器
+      if (serverIds.isNotEmpty && Get.isRegistered<ServerSyncService>()) {
+        Get.find<ServerSyncService>().deleteItems(serverIds);
+      }
       //删除文件
       if (removeFiles) {
         //提取所有文件路径

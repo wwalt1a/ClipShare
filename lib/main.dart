@@ -21,6 +21,7 @@ import 'package:clipshare/app/services/transport/connection_registry_service.dar
 import 'package:clipshare/app/services/transport/socket_service.dart';
 import 'package:clipshare/app/services/syncing_file_progress_service.dart';
 import 'package:clipshare/app/services/tag_service.dart';
+import 'package:clipshare/app/services/transport/server_sync_service.dart';
 import 'package:clipshare/app/services/transport/storage_service.dart';
 import 'package:clipshare/app/services/window_control_service.dart';
 import 'package:clipshare/app/services/window_service.dart';
@@ -170,6 +171,7 @@ Future<void> initMainServices() async {
   Get.put(HistorySyncProgressService(), permanent: true);
   Get.put<SocketService>(SocketService(registry), permanent: true);
   Get.put<StorageService>(StorageService(registry), permanent: true);
+  Get.put(ServerSyncService(), permanent: true);
   Get.put(AndroidChannelService().init(), permanent: true);
   Get.put(ClipChannelService().init(), permanent: true);
   Get.put(MultiWindowChannelService(), permanent: true);

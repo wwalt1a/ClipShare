@@ -54,7 +54,7 @@ const views = [VHistoryTagHold];
 ///
 /// 2. 直接执行 /scripts/db_gen.bat 一键完成
 @Database(
-  version: 7,
+  version: 9,
   entities: tables,
   views: views,
 )
@@ -127,6 +127,8 @@ class DbService extends GetxService {
       migration4to5,
       migration5to6,
       migration6to7,
+      migration7to8,
+      migration8to9,
     ]).build();
     version = await _db.database.database.getVersion();
     return this;
@@ -229,5 +231,21 @@ class DbService extends GetxService {
   final migration6to7 = Migration(6, 7, (database) async {
     await database.execute('CREATE INDEX IF NOT EXISTS `index_History_devId` ON `History` (`devId`)');
     await database.execute('CREATE INDEX IF NOT EXISTS `index_History_devId_source` ON `History` (`devId`, `source`)');
+  });
+
+  ///数据库版本 7 -> 8
+  ///History 表新增服务器图片到期时间字段（serverExpireAt），用于在历史列表显示倒计时提示
+  final migration7to8 = Migration(7, 8, (database) async {
+    if (!await hasColumnInTable(database, 'History', 'serverExpireAt')) {
+      await database.execute('ALTER TABLE History ADD COLUMN serverExpireAt TEXT');
+    }
+  });
+
+  ///数据库版本 8 -> 9
+  ///History 表新增服务器条目 ID 字段（serverItemId），用于删除时同步到服务器
+  final migration8to9 = Migration(8, 9, (database) async {
+    if (!await hasColumnInTable(database, 'History', 'serverItemId')) {
+      await database.execute('ALTER TABLE History ADD COLUMN serverItemId TEXT');
+    }
   });
 }

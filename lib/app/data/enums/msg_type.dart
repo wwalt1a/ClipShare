@@ -39,6 +39,8 @@ enum MsgType {
   pingResult,
   //文件同步
   file,
+  //同步密码（配对成功后发起方传递给对方）
+  syncKey,
   //未知key
   unknown;
 

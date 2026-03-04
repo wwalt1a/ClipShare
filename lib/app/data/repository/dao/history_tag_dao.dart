@@ -54,6 +54,17 @@ abstract class HistoryTagDao {
   @Query("delete from HistoryTag")
   Future<int?> removeAll();
 
+  ///按标签名删除该标签的所有记录（批量删除标签）
+  @Query("delete from HistoryTag where tagName = :tagName")
+  Future<int?> removeByTagName(String tagName);
+
+  ///按多个标签名批量删除
+  Future<void> removeByTagNames(List<String> tagNames) async {
+    for (final name in tagNames) {
+      await removeByTagName(name);
+    }
+  }
+
   ///获取标签
   @Query("select * from HistoryTag where hisId = :hId and tagName = :tagName ")
   Future<HistoryTag?> get(int hId, String tagName);

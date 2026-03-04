@@ -36,6 +36,7 @@ import 'package:clipshare/app/services/clipboard_source_service.dart';
 import 'package:clipshare/app/services/config_service.dart';
 import 'package:clipshare/app/services/db_service.dart';
 import 'package:clipshare/app/services/transport/socket_service.dart';
+import 'package:clipshare/app/services/transport/server_sync_service.dart';
 import 'package:clipshare/app/services/tag_service.dart';
 import 'package:clipshare/app/utils/constants.dart';
 import 'package:clipshare/app/utils/extensions/file_extension.dart';
@@ -639,6 +640,9 @@ class HistoryController extends GetxController with WidgetsBindingObserver imple
     notifyHistoryWindow();
     _tempList.add(clip);
     debounceUpdate();
+    if (shouldSync) {
+      _pushToServer(history, contentType);
+    }
     if (!shouldSync) {
       final source = history.source;
       final appInfo = sourceService.getAppInfoByAppId(source);
@@ -765,6 +769,37 @@ class HistoryController extends GetxController with WidgetsBindingObserver imple
   @override
   void onScreenClosed() {
     _screenUnlocked = false;
+  }
+
+  ///推送本机内容到中转服务器（异步，不阻塞主流程）
+  void _pushToServer(History history, HistoryContentType contentType) {
+    if (!Get.isRegistered<ServerSyncService>()) return;
+    final serverSync = Get.find<ServerSyncService>();
+    if (contentType == HistoryContentType.image) {
+      serverSync.pushImage(history.content).then((data) {
+        if (data == null) return;
+        final serverItemId = data["id"] as String?;
+        final expireAtTs = data["expireAt"];
+        String? expireAtStr;
+        if (expireAtTs != null) {
+          final ts = expireAtTs is int ? expireAtTs : int.tryParse(expireAtTs.toString());
+          if (ts != null) {
+            expireAtStr = DateTime.fromMillisecondsSinceEpoch(ts * 1000).toIso8601String();
+          }
+        }
+        dbService.historyDao.updateServerFields(history.id, serverItemId, expireAtStr).then((_) {
+          history.serverItemId = serverItemId;
+          history.serverExpireAt = expireAtStr;
+          debounceUpdate();
+        });
+      }).catchError((e) => Log.error(tag, "pushImage to server error: $e"));
+    } else if (contentType == HistoryContentType.text) {
+      serverSync.pushText(history).then((serverItemId) {
+        if (serverItemId == null) return;
+        dbService.historyDao.updateServerFields(history.id, serverItemId, null);
+        history.serverItemId = serverItemId;
+      }).catchError((e) => Log.error(tag, "pushText to server error: $e"));
+    }
   }
 
   //endregion

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:animated_theme_switcher/animated_theme_switcher.dart';
 import 'package:clipshare/app/data/enums/devicce_id_generate_way.dart';
@@ -606,6 +607,36 @@ class ConfigService extends GetxService {
 
   bool get isExcludeFormat => _excludeFormat.value;
 
+  // 服务器同步密码（32 字节随机 hex 字符串）
+  final _syncPassword = ''.obs;
+
+  String get syncPassword => _syncPassword.value;
+
+  /// 是否已设置同步密码
+  bool get hasSyncPassword => _syncPassword.value.isNotEmpty;
+
+  /// groupId = PBKDF2(syncPassword)，用于服务器端命名空间，不含明文密码
+  String get syncGroupId {
+    if (!hasSyncPassword) return '';
+    final bytes = CryptoUtil.pbkdf2WithHmacSHA256Bytes(
+      _syncPassword.value,
+      'clipshare-group-salt',
+      10000,
+      32,
+    );
+    return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+  }
+
+  /// AES 加密密钥（32字节，用于加密推送到服务器的内容）
+  List<int> get syncAesKey {
+    return CryptoUtil.pbkdf2WithHmacSHA256Bytes(
+      _syncPassword.value,
+      'clipshare-aes-salt',
+      10000,
+      32,
+    );
+  }
+
   //endregion
 
   //endregion
@@ -816,6 +847,7 @@ class ConfigService extends GetxService {
     _sendBroadcastOnAdd.value = await cfg.getConfigByKey(ConfigKey.sendBroadcastOnAdd, false);
     _recopyOnScreenUnlocked.value = await cfg.getConfigByKey(ConfigKey.recopyOnScreenUnlocked, false);
     _excludeFormat.value = await cfg.getConfigByKey(ConfigKey.excludeFormat, true);
+    _syncPassword.value = await cfg.getConfigByKey(ConfigKey.syncPassword, '');
   }
 
   ///初始化路径信息
@@ -1401,6 +1433,21 @@ class ConfigService extends GetxService {
     await clipboardService.setExcludeFormat(value);
   }
 
+  /// 设置同步密码，若 password 为空则生成随机密码
+  Future<String> setSyncPassword([String? password]) async {
+    final pwd = password ?? _generateSyncPassword();
+    await configDao.addOrUpdate(ConfigKey.syncPassword, pwd);
+    _syncPassword.value = pwd;
+    return pwd;
+  }
+
+  /// 生成 32 字节随机 hex 同步密码
+  String _generateSyncPassword() {
+    final random = Random.secure();
+    final bytes = List<int>.generate(32, (_) => random.nextInt(256));
+    return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+  }
+
   //endregion
 
   //region 其他方法
@@ -1416,7 +1463,7 @@ class ConfigService extends GetxService {
         params[2],
         params[3],
       );
-    }, [_dhEncryptKey.value, Constants.pkgName, 100_000, 32]);
+    }, [_dhEncryptKey.value, Constants.pkgName, 100000, 32]);
   }
 
   ///将底部导航栏设置为深色

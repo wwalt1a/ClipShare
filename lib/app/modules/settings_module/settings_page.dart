@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:animated_theme_switcher/animated_theme_switcher.dart';
+import 'package:clipshare/app/routes/app_pages.dart';
 import 'package:clipshare/app/data/enums/forward_server_status.dart';
 import 'package:clipshare/app/data/enums/hot_key_type.dart';
 import 'package:clipshare/app/services/android_notification_listener_service.dart';
@@ -1476,6 +1477,67 @@ class SettingsPage extends GetView<SettingsController> {
                             );
                           },
                         ),
+                      if (appConfig.forwardWay == ForwardWay.server)
+                        SettingCard(
+                          title: const Text("云端同步密码"),
+                          description: Text(
+                            appConfig.hasSyncPassword
+                                ? "已设置 · 配对时自动同步给对方设备"
+                                : "未设置，点击「生成密码」以启用云端加密同步",
+                          ),
+                          value: null,
+                          action: (v) => Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (appConfig.hasSyncPassword)
+                                IconButton(
+                                  tooltip: "查看密码",
+                                  icon: const Icon(Icons.visibility_outlined, color: Colors.blueGrey),
+                                  onPressed: () {
+                                    Global.showTipsDialog(
+                                      context: context,
+                                      title: "同步密码",
+                                      text: appConfig.syncPassword,
+                                    );
+                                  },
+                                ),
+                              TextButton(
+                                onPressed: () {
+                                  final isRegen = appConfig.hasSyncPassword;
+                                  showDialog(
+                                    context: context,
+                                    builder: (ctx) => AlertDialog(
+                                      title: Text(isRegen ? "重新生成密码" : "生成同步密码"),
+                                      content: Text(
+                                        isRegen
+                                            ? "重新生成后旧密码失效，已配对设备需重新配对才能恢复云端同步，确定继续？"
+                                            : "将生成新的同步密码，配对时会自动传递给对方设备。",
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.of(ctx).pop(),
+                                          child: Text(TranslationKey.dialogCancelText.tr),
+                                        ),
+                                        TextButton(
+                                          onPressed: () async {
+                                            Navigator.of(ctx).pop();
+                                            await appConfig.setSyncPassword();
+                                            Global.showSnackBarSuc(
+                                              context: Get.context!,
+                                              text: "同步密码已生成",
+                                            );
+                                          },
+                                          child: Text(TranslationKey.dialogConfirmText.tr),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                                child: Text(appConfig.hasSyncPassword ? "重新生成" : "生成密码"),
+                              ),
+                            ],
+                          ),
+                        ),
                       if (appConfig.forwardWay == ForwardWay.webdav)
                         SettingCard(
                           title: Text(
@@ -2242,6 +2304,16 @@ class SettingsPage extends GetView<SettingsController> {
                           icon: arrowForwardIcon,
                         ),
                         onTap: controller.gotoCleanDataPage,
+                      ),
+                      SettingCard(
+                        title: const Text("标签管理"),
+                        description: const Text("批量删除标签（不影响被打标签的剪贴板内容）"),
+                        value: null,
+                        action: (v) => IconButton(
+                          onPressed: () => Get.toNamed(Routes.TAG_MANAGE),
+                          icon: arrowForwardIcon,
+                        ),
+                        onTap: () => Get.toNamed(Routes.TAG_MANAGE),
                       ),
                       SettingCard<int>(
                         title: Text(TranslationKey.syncOutDateSettingTitle.tr),

@@ -7,6 +7,9 @@ class ForwardServerConfig {
 
   String get server => "$host:$port";
 
+  /// HTTP API 默认走 80 端口，不需要用户额外配置
+  String get apiBase => "http://$host/api/clip";
+
   ForwardServerConfig({
     required this.host,
     required this.port,

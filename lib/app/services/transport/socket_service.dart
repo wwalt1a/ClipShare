@@ -15,6 +15,8 @@ import 'package:clipshare/app/data/models/dev_socket.dart';
 import 'package:clipshare/app/data/models/message_data.dart';
 import 'package:clipshare/app/data/models/version.dart';
 import 'package:clipshare/app/data/repository/entity/tables/app_info.dart';
+import 'package:clipshare/app/data/repository/entity/tables/history.dart';
+import 'package:clipshare/app/modules/history_module/history_controller.dart';
 import 'package:clipshare/app/handlers/dev_pairing_handler.dart';
 import 'package:clipshare/app/handlers/socket/forward_socket_client.dart';
 import 'package:clipshare/app/handlers/socket/secure_socket_client.dart';
@@ -43,6 +45,7 @@ import 'package:clipshare/app/utils/extensions/string_extension.dart';
 import 'package:clipshare/app/utils/extensions/time_extension.dart';
 import 'package:clipshare/app/utils/global.dart';
 import 'package:clipshare/app/utils/log.dart';
+import 'package:clipshare/app/services/transport/server_sync_service.dart';
 import 'package:collection/collection.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
@@ -378,6 +381,8 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
             connData["key"] = key;
           }
           self.send(connData);
+          // 连接成功后拉取服务器新内容
+          _pullFromServer();
           if (startDiscovery) {
             Future.delayed(1.s, () async {
               final list = await _forwardDiscovering();
@@ -730,6 +735,24 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
         if (_pairing = true) {
           Get.back();
           _pairing = false;
+        }
+        // 配对成功后，发起方将同步密码发送给对方
+        if (result) {
+          final pwd = await appConfig.setSyncPassword(
+            appConfig.hasSyncPassword ? appConfig.syncPassword : null,
+          );
+          dev.sendData(MsgType.syncKey, {"key": pwd}, false);
+        }
+        break;
+
+      /// 接收对方发来的同步密码（配对完成后由发起方发送）
+      case MsgType.syncKey:
+        final receivedKey = msg.data["key"] as String?;
+        if (receivedKey != null && receivedKey.isNotEmpty) {
+          // 仅当本机尚无密码时接受，防止多设备已有密码时被覆盖
+          if (!appConfig.hasSyncPassword) {
+            await appConfig.setSyncPassword(receivedKey);
+          }
         }
         break;
 
@@ -1594,8 +1617,7 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
 
   ///重连设备，由于对向设备的连接可能持续持有一小段时间（视心跳时间而定）
   ///会在一定时间内持续尝试重连，此处默认 3 分钟
-  void _attemptReconnect(DevSocket devSkt) async {
-    final startTime = DateTime.now();
+  void _attemptReconnect(DevSocket devSkt) async {    final startTime = DateTime.now();
     var endTime = DateTime.now();
     var diffMinutes = endTime.difference(startTime).inMinutes;
     final ip = devSkt.socket.ip;
@@ -1629,6 +1651,56 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
       diffMinutes = endTime.difference(startTime).inMinutes;
     }
     Log.debug(tag, "重连失败 $devNameAddr");
+  }
+
+  ///中转服务器连接成功后拉取服务器端新内容并写入本地数据库
+  void _pullFromServer() {
+    if (!Get.isRegistered<ServerSyncService>()) return;
+    final serverSync = Get.find<ServerSyncService>();
+    serverSync.pullNewItems().then((items) async {
+      if (items.isEmpty) return;
+      final historyController = Get.find<HistoryController>();
+      for (final item in items) {
+        try {
+          String content;
+          int size;
+          if (item.isImage) {
+            // 下载图片字节并保存到本地文件
+            final bytes = await serverSync.downloadImage(item.fileId);
+            if (bytes == null) continue;
+            final fileName = "${item.fileId}.png";
+            final dirPath = Platform.isAndroid
+                ? (appConfig.saveToPictures
+                    ? "${Constants.androidPicturesPath}/${Constants.appName}"
+                    : appConfig.androidPrivatePicturesPath)
+                : appConfig.fileStorePath;
+            final filePath = "$dirPath/$fileName";
+            final file = File(filePath);
+            await file.parent.create(recursive: true);
+            await file.writeAsBytes(bytes);
+            content = file.path.normalizePath;
+            size = bytes.length;
+          } else {
+            content = item.decryptedContent ?? "";
+            size = content.length;
+          }
+          final history = History(
+            id: appConfig.snowflake.nextId(),
+            uid: appConfig.userId,
+            devId: item.devId,
+            time: item.createdAt.toLocal().toString(),
+            content: content,
+            type: item.isImage ? "Image" : "Text",
+            size: size,
+            serverItemId: item.id,
+            serverExpireAt: item.expireAt?.toIso8601String(),
+          );
+          historyController.addData(history, false);
+        } catch (e) {
+          Log.error(tag, "pullFromServer item error: $e");
+        }
+      }
+    }).catchError((e) => Log.error(tag, "pullFromServer error: $e"));
   }
 
   ///向兼容的设备发送消息
