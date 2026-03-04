@@ -54,9 +54,9 @@ jobs:
             echo "Found ipa file: $IPA_FILE"
             # 复制到固定位置便于上传
             mkdir -p upload
-            cp "$DMG_FILE" upload/
+            cp "$IPA_FILE" upload/
           else
-            echo "No DMG file found"
+            echo "No IPA file found"
             exit 1
           fi
         shell: bash
