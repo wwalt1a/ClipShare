@@ -142,6 +142,8 @@ class History implements Comparable {
       "size": size,
       "updateTime": updateTime,
       "source": source,
+      "serverExpireAt": serverExpireAt,
+      "serverItemId": serverItemId,
     };
   }
 
