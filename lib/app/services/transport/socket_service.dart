@@ -1700,7 +1700,7 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
           Log.error(tag, "pullFromServer item error: $e");
         }
       }
-    }).catchError((e) => Log.error(tag, "pullFromServer error: $e"));
+    }).catchError((e) { Log.error(tag, "pullFromServer error: $e"); });
   }
 
   ///向兼容的设备发送消息

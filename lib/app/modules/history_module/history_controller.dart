@@ -792,13 +792,13 @@ class HistoryController extends GetxController with WidgetsBindingObserver imple
           history.serverExpireAt = expireAtStr;
           debounceUpdate();
         });
-      }).catchError((e) => Log.error(tag, "pushImage to server error: $e"));
+      }).catchError((e) { Log.error(tag, "pushImage to server error: $e"); });
     } else if (contentType == HistoryContentType.text) {
       serverSync.pushText(history).then((serverItemId) {
         if (serverItemId == null) return;
         dbService.historyDao.updateServerFields(history.id, serverItemId, null);
         history.serverItemId = serverItemId;
-      }).catchError((e) => Log.error(tag, "pushText to server error: $e"));
+      }).catchError((e) { Log.error(tag, "pushText to server error: $e"); });
     }
   }
 

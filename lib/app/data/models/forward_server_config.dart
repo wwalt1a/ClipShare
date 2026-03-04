@@ -12,7 +12,7 @@ class ForwardServerConfig {
   String get server => "$host:$port";
 
   String get apiBase {
-    final base = apiBaseUrl.trim().trimRight('/');
+    final base = apiBaseUrl.trim().replaceAll(RegExp(r'/+$'), '');
     if (base.isNotEmpty) return "$base/api/clip";
     return "http://$host/api/clip";
   }
