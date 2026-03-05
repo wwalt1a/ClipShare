@@ -67,7 +67,7 @@ class ServerSyncService extends GetxService {
         "content": encrypted,
       });
       final uri = Uri.parse("$_apiBase/push/text");
-      Log.info(tag, "pushText: 请求 $uri");
+      Log.info(tag, "pushText: 请求 $uri, groupId=$_groupId, devId=${appConfig.device.guid}");
       final resp = await http
           .post(
             uri,
@@ -148,7 +148,7 @@ class ServerSyncService extends GetxService {
       final uri = Uri.parse("$_apiBase/pull").replace(
         queryParameters: {"groupId": _groupId, "since": since},
       );
-      Log.info(tag, "pullNewItems: 请求 $uri");
+      Log.info(tag, "pullNewItems: 请求 $uri, groupId=$_groupId, devId=${appConfig.device.guid}");
       final resp = await http
           .get(uri)
           .timeout(const Duration(seconds: 10));
