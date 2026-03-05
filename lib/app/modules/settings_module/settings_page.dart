@@ -1482,8 +1482,8 @@ class SettingsPage extends GetView<SettingsController> {
                           title: const Text("云端同步密码"),
                           description: Text(
                             appConfig.hasSyncPassword
-                                ? "已设置 · 配对时自动同步给对方设备"
-                                : "未设置，点击「生成密码」以启用云端加密同步",
+                                ? "已设置 · 所有设备需使用相同密码"
+                                : "未设置，请手动输入或生成密码以启用云端加密同步",
                           ),
                           value: null,
                           action: (v) => Row(
@@ -1503,6 +1503,65 @@ class SettingsPage extends GetView<SettingsController> {
                                 ),
                               TextButton(
                                 onPressed: () {
+                                  final passwordController = TextEditingController();
+                                  showDialog(
+                                    context: context,
+                                    builder: (ctx) => AlertDialog(
+                                      title: const Text("手动输入密码"),
+                                      content: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Text("请输入64位十六进制密码（32字节）"),
+                                          const SizedBox(height: 10),
+                                          TextField(
+                                            controller: passwordController,
+                                            decoration: const InputDecoration(
+                                              hintText: "例如: a1b2c3d4...",
+                                              border: OutlineInputBorder(),
+                                            ),
+                                            maxLines: 3,
+                                          ),
+                                        ],
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.of(ctx).pop(),
+                                          child: Text(TranslationKey.dialogCancelText.tr),
+                                        ),
+                                        TextButton(
+                                          onPressed: () async {
+                                            final pwd = passwordController.text.trim();
+                                            if (pwd.isEmpty) {
+                                              Global.showSnackBarErr(
+                                                context: Get.context!,
+                                                text: "密码不能为空",
+                                              );
+                                              return;
+                                            }
+                                            if (pwd.length != 64 || !RegExp(r'^[0-9a-fA-F]{64}$').hasMatch(pwd)) {
+                                              Global.showSnackBarErr(
+                                                context: Get.context!,
+                                                text: "密码格式错误，必须是64位十六进制字符",
+                                              );
+                                              return;
+                                            }
+                                            Navigator.of(ctx).pop();
+                                            await appConfig.setSyncPassword(pwd.toLowerCase());
+                                            Global.showSnackBarSuc(
+                                              context: Get.context!,
+                                              text: "同步密码已设置",
+                                            );
+                                          },
+                                          child: Text(TranslationKey.dialogConfirmText.tr),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                                child: const Text("手动输入"),
+                              ),
+                              TextButton(
+                                onPressed: () {
                                   final isRegen = appConfig.hasSyncPassword;
                                   showDialog(
                                     context: context,
@@ -1510,8 +1569,8 @@ class SettingsPage extends GetView<SettingsController> {
                                       title: Text(isRegen ? "重新生成密码" : "生成同步密码"),
                                       content: Text(
                                         isRegen
-                                            ? "重新生成后旧密码失效，已配对设备需重新配对才能恢复云端同步，确定继续？"
-                                            : "将生成新的同步密码，配对时会自动传递给对方设备。",
+                                            ? "重新生成后旧密码失效，所有设备需手动输入新密码才能恢复云端同步，确定继续？"
+                                            : "将生成新的随机密码，请复制密码并在其他设备上手动输入。",
                                       ),
                                       actions: [
                                         TextButton(
@@ -1522,9 +1581,10 @@ class SettingsPage extends GetView<SettingsController> {
                                           onPressed: () async {
                                             Navigator.of(ctx).pop();
                                             await appConfig.setSyncPassword();
-                                            Global.showSnackBarSuc(
+                                            Global.showTipsDialog(
                                               context: Get.context!,
-                                              text: "同步密码已生成",
+                                              title: "同步密码已生成",
+                                              text: "密码: ${appConfig.syncPassword}\n\n请复制此密码并在其他设备上手动输入",
                                             );
                                           },
                                           child: Text(TranslationKey.dialogConfirmText.tr),

@@ -736,36 +736,12 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
           Get.back();
           _pairing = false;
         }
-        // 配对成功后，发起方将同步密码发送给对方
-        if (result) {
-          final pwd = await appConfig.setSyncPassword(
-            appConfig.hasSyncPassword ? appConfig.syncPassword : null,
-          );
-          dev.sendData(MsgType.syncKey, {"key": pwd}, false);
-        }
+        // 配对成功 - 不再自动同步密码，用户需手动在两个设备上设置相同密码
         break;
 
-      /// 接收对方发来的同步密码（配对完成后由发起方发送）
+      /// 接收对方发来的同步密码（已废弃 - 改为手动输入）
       case MsgType.syncKey:
-        final receivedKey = msg.data["key"] as String?;
-        if (receivedKey != null && receivedKey.isNotEmpty) {
-          final hasLocalPassword = appConfig.hasSyncPassword;
-          final localPassword = hasLocalPassword ? appConfig.syncPassword : null;
-
-          // 如果本机没有密码，直接接受
-          if (!hasLocalPassword) {
-            Log.info(tag, "接收同步密码：本机无密码，接受对方密码");
-            await appConfig.setSyncPassword(receivedKey);
-          }
-          // 如果本机有密码但与对方不同，提示用户
-          else if (localPassword != receivedKey) {
-            Log.warn(tag, "接收同步密码：本机已有不同密码，保持本机密码不变");
-            // 可选：弹出对话框让用户选择是否覆盖
-            // 暂时保持原有密码，避免数据混乱
-          } else {
-            Log.info(tag, "接收同步密码：密码一致，无需更新");
-          }
-        }
+        Log.info(tag, "收到同步密码消息，但已改为手动输入模式，忽略此消息");
         break;
 
       ///取消配对
