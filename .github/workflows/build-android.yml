@@ -32,14 +32,6 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Calculate build number
-        id: build_number
-        shell: pwsh
-        run: |
-          $commitCount = git rev-list --count HEAD
-          Write-Host "Build number: $commitCount"
-          "BUILD_NUMBER=$commitCount" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-
       - name: Restore keystore
         shell: bash
         run: |
@@ -68,8 +60,9 @@ jobs:
       - name: Build APK
         shell: pwsh
         run: |
-          Write-Host "BUILD_NUMBER from env: $env:BUILD_NUMBER"
-          flutter build apk --target-platform android-arm,android-arm64,android-x64 --split-per-abi --build-number=$env:BUILD_NUMBER
+          $buildNumber = git rev-list --count HEAD
+          Write-Host "Build number: $buildNumber"
+          flutter build apk --target-platform android-arm,android-arm64,android-x64 --split-per-abi --build-number=$buildNumber
 
       - name: Prepare APK artifact
         shell: pwsh
