@@ -31,19 +31,7 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-
-      - name: Auto increment version
-        shell: pwsh
-        run: |
-          $commitCount = git rev-list --count HEAD
-          $content = Get-Content pubspec.yaml -Raw -Encoding UTF8
-          $content -match 'version:\s+(\d+\.\d+\.\d+)\+(\d+)'
-          $versionName = $matches[1]
-          $newVersion = "$versionName+$commitCount"
-          $content = $content -replace 'version:\s+\d+\.\d+\.\d+\+\d+', "version: $newVersion"
-          [System.IO.File]::WriteAllText("$PWD/pubspec.yaml", $content, [System.Text.Encoding]::UTF8)
-          Write-Host "Updated version to: $newVersion"
-
+          
       - name: Restore keystore
         shell: bash
         run: |
