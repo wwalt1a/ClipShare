@@ -1,6 +1,7 @@
 import 'package:clipshare/app/data/enums/translation_key.dart';
 import 'package:clipshare/app/modules/history_module/history_controller.dart';
 import 'package:clipshare/app/services/db_service.dart';
+import 'package:clipshare/app/services/tag_service.dart';
 import 'package:clipshare/app/utils/global.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -15,6 +16,7 @@ class TagManagePage extends StatefulWidget {
 
 class _TagManagePageState extends State<TagManagePage> {
   final dbService = Get.find<DbService>();
+  final tagService = Get.find<TagService>();
 
   List<String> _allTags = [];
   final Set<String> _selected = {};
@@ -81,7 +83,12 @@ class _TagManagePageState extends State<TagManagePage> {
 
     Global.showLoadingDialog(context: context);
     try {
-      await dbService.historyTagDao.removeByTagNames(_selected.toList());
+      // 获取所有要删除的标签记录
+      final tagsToDelete = await dbService.historyTagDao.getByTagNames(_selected.toList());
+
+      // 通过 TagService 删除，这样会触发监听器通知
+      await tagService.removeList(tagsToDelete, true);
+
       _selected.clear();
       await _loadTags();
       Get.back(); // 关闭 loading
@@ -89,7 +96,7 @@ class _TagManagePageState extends State<TagManagePage> {
         context: context,
         text: "标签已删除",
       );
-      // 通知历史页面刷新标签列表
+      // 通知历史页面刷新
       if (Get.isRegistered<HistoryController>()) {
         Get.find<HistoryController>().debounceUpdate();
       }
