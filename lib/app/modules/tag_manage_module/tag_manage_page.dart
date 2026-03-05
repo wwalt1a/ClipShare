@@ -1,4 +1,5 @@
 import 'package:clipshare/app/data/enums/translation_key.dart';
+import 'package:clipshare/app/modules/history_module/history_controller.dart';
 import 'package:clipshare/app/services/db_service.dart';
 import 'package:clipshare/app/utils/global.dart';
 import 'package:flutter/material.dart';
@@ -88,6 +89,10 @@ class _TagManagePageState extends State<TagManagePage> {
         context: context,
         text: "标签已删除",
       );
+      // 通知历史页面刷新标签列表
+      if (Get.isRegistered<HistoryController>()) {
+        Get.find<HistoryController>().debounceUpdate();
+      }
     } catch (e) {
       Get.back();
       Global.showSnackBarWarn(context: context, text: "删除失败: $e");

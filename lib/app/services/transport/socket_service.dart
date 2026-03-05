@@ -1264,6 +1264,10 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
     if (paired) {
       //已配对，请求所有缺失数据
       reqMissingData();
+      // 如果使用转发服务器，从云端拉取离线期间的剪贴板记录
+      if (client.isForwardMode) {
+        _pullFromServer();
+      }
     }
   }
 
