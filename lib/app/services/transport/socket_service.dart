@@ -749,9 +749,21 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
       case MsgType.syncKey:
         final receivedKey = msg.data["key"] as String?;
         if (receivedKey != null && receivedKey.isNotEmpty) {
-          // 仅当本机尚无密码时接受，防止多设备已有密码时被覆盖
-          if (!appConfig.hasSyncPassword) {
+          final hasLocalPassword = appConfig.hasSyncPassword;
+          final localPassword = hasLocalPassword ? appConfig.syncPassword : null;
+
+          // 如果本机没有密码，直接接受
+          if (!hasLocalPassword) {
+            Log.info(tag, "接收同步密码：本机无密码，接受对方密码");
             await appConfig.setSyncPassword(receivedKey);
+          }
+          // 如果本机有密码但与对方不同，提示用户
+          else if (localPassword != receivedKey) {
+            Log.warn(tag, "接收同步密码：本机已有不同密码，保持本机密码不变");
+            // 可选：弹出对话框让用户选择是否覆盖
+            // 暂时保持原有密码，避免数据混乱
+          } else {
+            Log.info(tag, "接收同步密码：密码一致，无需更新");
           }
         }
         break;
