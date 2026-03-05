@@ -36,7 +36,7 @@ jobs:
         shell: bash
         run: |
           COMMIT_COUNT=$(git rev-list --count HEAD)
-          VERSION_NAME=$(grep -oP 'version:\s+\K\d+\.\d+\.\d+' pubspec.yaml)
+          VERSION_NAME=$(grep '^version:' pubspec.yaml | sed 's/version: *\([0-9.]*\)+.*/\1/')
           NEW_VERSION="${VERSION_NAME}+${COMMIT_COUNT}"
           sed -i "s/version: ${VERSION_NAME}+[0-9]\+/version: ${NEW_VERSION}/" pubspec.yaml
           echo "Updated version to: ${NEW_VERSION}"
