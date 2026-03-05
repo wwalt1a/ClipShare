@@ -773,11 +773,19 @@ class HistoryController extends GetxController with WidgetsBindingObserver imple
 
   ///推送本机内容到中转服务器（异步，不阻塞主流程）
   void _pushToServer(History history, HistoryContentType contentType) {
-    if (!Get.isRegistered<ServerSyncService>()) return;
+    if (!Get.isRegistered<ServerSyncService>()) {
+      Log.warn(tag, "_pushToServer: ServerSyncService 未注册");
+      return;
+    }
     final serverSync = Get.find<ServerSyncService>();
+    Log.info(tag, "_pushToServer: 准备推送 ${contentType.name} 到服务器");
     if (contentType == HistoryContentType.image) {
       serverSync.pushImage(history.content).then((data) {
-        if (data == null) return;
+        if (data == null) {
+          Log.warn(tag, "_pushToServer: pushImage 返回 null（可能未启用或失败）");
+          return;
+        }
+        Log.info(tag, "_pushToServer: pushImage 成功，serverItemId=${data["id"]}");
         final serverItemId = data["id"] as String?;
         final expireAtTs = data["expireAt"];
         String? expireAtStr;
@@ -795,7 +803,11 @@ class HistoryController extends GetxController with WidgetsBindingObserver imple
       }).catchError((e) { Log.error(tag, "pushImage to server error: $e"); });
     } else if (contentType == HistoryContentType.text) {
       serverSync.pushText(history).then((serverItemId) {
-        if (serverItemId == null) return;
+        if (serverItemId == null) {
+          Log.warn(tag, "_pushToServer: pushText 返回 null（可能未启用或失败）");
+          return;
+        }
+        Log.info(tag, "_pushToServer: pushText 成功，serverItemId=$serverItemId");
         dbService.historyDao.updateServerFields(history.id, serverItemId, null);
         history.serverItemId = serverItemId;
       }).catchError((e) { Log.error(tag, "pushText to server error: $e"); });

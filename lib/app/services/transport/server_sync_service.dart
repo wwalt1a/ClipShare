@@ -55,7 +55,10 @@ class ServerSyncService extends GetxService {
   // ── 推送文本 ─────────────────────────────────────────────
 
   Future<String?> pushText(History history) async {
-    if (!_isEnabled) return null;
+    if (!_isEnabled) {
+      Log.warn(tag, "pushText: 云端同步未启用 (forwardServer=${appConfig.forwardServer != null}, hasSyncPassword=${appConfig.hasSyncPassword})");
+      return null;
+    }
     try {
       final encrypted = _encrypt(history.content);
       final body = jsonEncode({
@@ -63,9 +66,11 @@ class ServerSyncService extends GetxService {
         "devId": appConfig.device.guid,
         "content": encrypted,
       });
+      final uri = Uri.parse("$_apiBase/push/text");
+      Log.info(tag, "pushText: 请求 $uri");
       final resp = await http
           .post(
-            Uri.parse("$_apiBase/push/text"),
+            uri,
             headers: {"Content-Type": "application/json"},
             body: body,
           )
@@ -73,7 +78,9 @@ class ServerSyncService extends GetxService {
       if (resp.statusCode == 200) {
         final json = jsonDecode(resp.body);
         if (json["code"] == 200 && json["data"] != null) {
-          return json["data"]["id"] as String?;
+          final serverId = json["data"]["id"] as String?;
+          Log.info(tag, "pushText 成功: serverItemId=$serverId");
+          return serverId;
         }
       }
       Log.warn(tag, "pushText failed: ${resp.statusCode} ${resp.body}");
@@ -87,19 +94,26 @@ class ServerSyncService extends GetxService {
 
   /// [imagePath] 本地图片文件路径，[imageExpireDays] 服务器保留天数（由服务器决定为30天）
   Future<Map<String, dynamic>?> pushImage(String imagePath) async {
-    if (!_isEnabled) return null;
+    if (!_isEnabled) {
+      Log.warn(tag, "pushImage: 云端同步未启用 (forwardServer=${appConfig.forwardServer != null}, hasSyncPassword=${appConfig.hasSyncPassword})");
+      return null;
+    }
     try {
       final file = File(imagePath);
-      if (!file.existsSync()) return null;
+      if (!file.existsSync()) {
+        Log.warn(tag, "pushImage: 文件不存在 $imagePath");
+        return null;
+      }
 
       final rawBytes = await file.readAsBytes();
+      Log.info(tag, "pushImage: 读取图片 ${rawBytes.length} 字节");
       // 将图片原始字节加密后再上传
       final encBytes = _encryptBytes(rawBytes);
+      Log.info(tag, "pushImage: 加密后 ${encBytes.length} 字节");
 
-      final request = http.MultipartRequest(
-        "POST",
-        Uri.parse("$_apiBase/push/image"),
-      )
+      final uri = Uri.parse("$_apiBase/push/image");
+      Log.info(tag, "pushImage: 请求 $uri");
+      final request = http.MultipartRequest("POST", uri)
         ..fields["groupId"] = _groupId
         ..fields["devId"] = appConfig.device.guid
         ..files.add(
@@ -111,6 +125,7 @@ class ServerSyncService extends GetxService {
       if (resp.statusCode == 200) {
         final json = jsonDecode(resp.body);
         if (json["code"] == 200) {
+          Log.info(tag, "pushImage 成功: ${json["data"]}");
           return json["data"] as Map<String, dynamic>;
         }
       }
