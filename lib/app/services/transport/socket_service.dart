@@ -1661,8 +1661,13 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
   void _pullFromServer() {
     if (!Get.isRegistered<ServerSyncService>()) return;
     final serverSync = Get.find<ServerSyncService>();
+    Log.info(tag, "开始从服务器拉取剪贴板记录...");
     serverSync.pullNewItems().then((items) async {
-      if (items.isEmpty) return;
+      if (items.isEmpty) {
+        Log.info(tag, "服务器无新记录");
+        return;
+      }
+      Log.info(tag, "从服务器拉取到 ${items.length} 条记录");
       final historyController = Get.find<HistoryController>();
       for (final item in items) {
         try {
@@ -1670,8 +1675,13 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
           int size;
           if (item.isImage) {
             // 下载图片字节并保存到本地文件
+            Log.info(tag, "下载图片: fileId=${item.fileId}");
             final bytes = await serverSync.downloadImage(item.fileId);
-            if (bytes == null) continue;
+            if (bytes == null) {
+              Log.error(tag, "图片下载失败: fileId=${item.fileId}");
+              continue;
+            }
+            Log.info(tag, "图片下载成功，大小: ${bytes.length} 字节");
             final fileName = "${item.fileId}.png";
             final dirPath = Platform.isAndroid
                 ? (appConfig.saveToPictures
@@ -1682,11 +1692,13 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
             final file = File(filePath);
             await file.parent.create(recursive: true);
             await file.writeAsBytes(bytes);
+            Log.info(tag, "图片已保存到: $filePath");
             content = file.path.normalizePath;
             size = bytes.length;
           } else {
             content = item.decryptedContent ?? "";
             size = content.length;
+            Log.info(tag, "文本记录: ${content.substring(0, content.length > 20 ? 20 : content.length)}...");
           }
           final history = History(
             id: appConfig.snowflake.nextId(),
@@ -1700,11 +1712,12 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
             serverExpireAt: item.expireAt?.toIso8601String(),
           );
           historyController.addData(history, false);
-        } catch (e) {
-          Log.error(tag, "pullFromServer item error: $e");
+          Log.info(tag, "记录已添加到本地数据库");
+        } catch (e, s) {
+          Log.error(tag, "pullFromServer item error: $e\n$s");
         }
       }
-    }).catchError((e) { Log.error(tag, "pullFromServer error: $e"); });
+    }).catchError((e, s) { Log.error(tag, "pullFromServer error: $e\n$s"); });
   }
 
   ///向兼容的设备发送消息

@@ -118,31 +118,43 @@ class ServerSyncService extends GetxService {
   // ── 拉取新条目 ────────────────────────────────────────────
 
   Future<List<ServerClipItem>> pullNewItems() async {
-    if (!_isEnabled) return [];
+    if (!_isEnabled) {
+      Log.warn(tag, "pullNewItems: 云端同步未启用");
+      return [];
+    }
     try {
       final since = _lastPullTime.toUtc().toIso8601String();
       final uri = Uri.parse("$_apiBase/pull").replace(
         queryParameters: {"groupId": _groupId, "since": since},
       );
+      Log.info(tag, "pullNewItems: 请求 $uri");
       final resp = await http
           .get(uri)
           .timeout(const Duration(seconds: 10));
       if (resp.statusCode != 200) {
-        Log.warn(tag, "pullNewItems failed: ${resp.statusCode}");
+        Log.warn(tag, "pullNewItems failed: ${resp.statusCode} ${resp.body}");
         return [];
       }
       final json = jsonDecode(resp.body);
-      if (json["code"] != 200) return [];
+      if (json["code"] != 200) {
+        Log.warn(tag, "pullNewItems: 服务器返回错误 code=${json["code"]}");
+        return [];
+      }
 
       final List<dynamic> raw = json["data"] ?? [];
+      Log.info(tag, "pullNewItems: 收到 ${raw.length} 条原始记录");
       final items = <ServerClipItem>[];
       for (final item in raw) {
         try {
           final ci = ServerClipItem.fromJson(item);
           // 跳过本机发出的条目，避免回环
-          if (ci.devId == appConfig.device.guid) continue;
+          if (ci.devId == appConfig.device.guid) {
+            Log.info(tag, "跳过本机条目: ${ci.id}");
+            continue;
+          }
           // 解密内容
           if (ci.type == "text" && ci.content.isNotEmpty) {
+            Log.info(tag, "解密文本条目: ${ci.id}");
             ci.decryptedContent = _decrypt(ci.content);
           }
           items.add(ci);
@@ -152,6 +164,7 @@ class ServerSyncService extends GetxService {
       }
       if (items.isNotEmpty) {
         _lastPullTime = DateTime.now();
+        Log.info(tag, "pullNewItems: 成功解析 ${items.length} 条记录");
       }
       return items;
     } catch (e, s) {
@@ -163,18 +176,25 @@ class ServerSyncService extends GetxService {
   // ── 下载加密图片并解密 ─────────────────────────────────────
 
   Future<Uint8List?> downloadImage(String fileId) async {
-    if (!_isEnabled) return null;
+    if (!_isEnabled) {
+      Log.warn(tag, "downloadImage: 云端同步未启用");
+      return null;
+    }
     try {
       final uri = Uri.parse("$_apiBase/image").replace(
         queryParameters: {"groupId": _groupId, "fileId": fileId},
       );
+      Log.info(tag, "downloadImage: 请求 $uri");
       final resp = await http
           .get(uri)
           .timeout(const Duration(seconds: 30));
       if (resp.statusCode == 200) {
-        return _decryptBytes(resp.bodyBytes);
+        Log.info(tag, "downloadImage: 收到 ${resp.bodyBytes.length} 字节加密数据");
+        final decrypted = _decryptBytes(resp.bodyBytes);
+        Log.info(tag, "downloadImage: 解密后 ${decrypted.length} 字节");
+        return decrypted;
       }
-      Log.warn(tag, "downloadImage failed: ${resp.statusCode}");
+      Log.warn(tag, "downloadImage failed: ${resp.statusCode} ${resp.body}");
     } catch (e, s) {
       Log.error(tag, "downloadImage error: $e", s);
     }
