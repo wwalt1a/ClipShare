@@ -120,12 +120,17 @@ class CleanDataController extends GetxController implements DeviceRemoveListener
   ///加载搜索条件
   Future<void> loadData() async {
     //加载所有标签名
-    allTags.value = <String>{}..addAll(await dbService.historyTagDao.getAllTagNames());
+    final tagNames = await dbService.historyTagDao.getAllTagNames();
+    allTags.clear();
+    allTags.addAll(tagNames);
+
     //加载所有设备名
     var tmpLst = await dbService.deviceDao.getAllDevices(appConfig.userId);
     print("load data");
     tmpLst.add(appConfig.device);
-    allDevices.value = <Device>{}..addAll(tmpLst);
+    allDevices.clear();
+    allDevices.addAll(tmpLst);
+
     updateNextExecTime();
   }
 
@@ -456,6 +461,8 @@ class CleanDataController extends GetxController implements DeviceRemoveListener
     final searchController = Get.find<search_module.SearchController>();
     historyController.refreshData();
     searchController.refreshData();
+    // 重新加载标签和设备列表
+    loadData();
   }
 
   ///初始化自动清理定时器
@@ -511,7 +518,9 @@ class CleanDataController extends GetxController implements DeviceRemoveListener
 
   @override
   void onForget(DevInfo dev, int uid) {
-    return;
+    // 设备取消配对时，从列表中移除
+    allDevices.removeWhere((item) => item.guid == dev.guid);
+    selectedDevs.remove(dev.guid);
   }
 
   //endregion
