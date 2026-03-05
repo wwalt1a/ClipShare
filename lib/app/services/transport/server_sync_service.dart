@@ -25,6 +25,12 @@ class ServerSyncService extends GetxService {
   // 上次拉取时间（持久化到 config 可做更复杂处理，此处用内存值）
   DateTime _lastPullTime = DateTime.fromMillisecondsSinceEpoch(0);
 
+  /// 重置拉取时间，用于强制拉取所有记录
+  void resetPullTime() {
+    _lastPullTime = DateTime.fromMillisecondsSinceEpoch(0);
+    Log.info(tag, "resetPullTime: 已重置拉取时间");
+  }
+
   // ── 加密 / 解密 ──────────────────────────────────────────
 
   enc.Encrypter get _encrypter {
