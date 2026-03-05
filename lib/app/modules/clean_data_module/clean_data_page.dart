@@ -455,6 +455,86 @@ class CleanDataPage extends GetView<CleanDataController> {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 8),
+
+                  ///region 受保护的标签
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.shield_outlined,
+                        color: Colors.blueGrey,
+                        size: 16,
+                      ),
+                      const SizedBox(
+                        width: 2,
+                      ),
+                      Text(
+                        "受保护的标签",
+                        style: const TextStyle(color: Colors.blueGrey),
+                      ),
+                      const SizedBox(width: 5),
+                      Tooltip(
+                        message: "带有这些标签的剪贴板内容不会被删除",
+                        child: Icon(
+                          Icons.info_outline,
+                          size: 14,
+                          color: Colors.blueGrey.withOpacity(0.7),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(
+                    height: 4,
+                  ),
+                  Obx(
+                    () => Visibility(
+                      replacement: Row(
+                        mainAxisAlignment: MainAxisAlignment.start,
+                        children: [
+                          Text(
+                            "无标签",
+                            style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                      visible: controller.allTags.isNotEmpty,
+                      child: Obx(
+                        () => Wrap(
+                          direction: Axis.horizontal,
+                          children: [
+                            for (var tag in controller.allTags)
+                              Container(
+                                margin: const EdgeInsets.only(
+                                  right: 5,
+                                  bottom: 5,
+                                ),
+                                child: RoundedChip(
+                                  onPressed: () {
+                                    final selected = controller.protectedTags.contains(tag);
+                                    if (selected) {
+                                      controller.protectedTags.remove(tag);
+                                    } else {
+                                      controller.protectedTags.add(tag);
+                                    }
+                                  },
+                                  selected: controller.protectedTags.contains(tag),
+                                  label: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.shield, size: 14),
+                                      const SizedBox(width: 4),
+                                      Text(tag),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  ///endregion
 
                   ///endregion
 
@@ -494,6 +574,7 @@ class CleanDataPage extends GetView<CleanDataController> {
                                   controller.startDate.value ?? "",
                                   controller.endDate.value ?? "",
                                   controller.saveTopData.value,
+                                  controller.protectedTags.toList(),
                                 ) ??
                                 0;
                             if (cnt == 0) {

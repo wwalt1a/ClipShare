@@ -16,6 +16,7 @@ class CleanDataConfig {
   final String? cron;
   final DateTime? lastCleanTime;
   final DateTime? nextCleanTime;
+  final List<String> protectedTags; // 受保护的标签
 
   const CleanDataConfig({
     required this.tags,
@@ -28,6 +29,7 @@ class CleanDataConfig {
     this.cron,
     this.lastCleanTime,
     this.nextCleanTime,
+    this.protectedTags = const [],
   });
 
   CleanDataConfig copyWith({
@@ -41,6 +43,7 @@ class CleanDataConfig {
     String? cron,
     DateTime? lastCleanTime,
     DateTime? nextCleanTime,
+    List<String>? protectedTags,
   }) {
     return CleanDataConfig(
       tags: tags ?? this.tags,
@@ -53,6 +56,7 @@ class CleanDataConfig {
       autoCleanFreq: autoCleanFreq ?? this.autoCleanFreq,
       lastCleanTime: lastCleanTime ?? this.lastCleanTime,
       nextCleanTime: nextCleanTime ?? this.nextCleanTime,
+      protectedTags: protectedTags ?? this.protectedTags,
     );
   }
 
@@ -70,6 +74,7 @@ class CleanDataConfig {
       autoCleanFreq: freq == CleanDataFreq.unknown ? CleanDataFreq.day : freq,
       lastCleanTime: DateTime.tryParse(map['lastCleanTime']?.toString() ?? ""),
       nextCleanTime: DateTime.tryParse(map['nextCleanTime']?.toString() ?? ""),
+      protectedTags: (map['protectedTags'] as List<dynamic>?)?.cast<String>() ?? [],
     );
   }
 
@@ -85,6 +90,7 @@ class CleanDataConfig {
       "autoCleanFreq": autoCleanFreq.name,
       "lastCleanTime": lastCleanTime?.format(),
       "nextCleanTime": nextCleanTime?.format(),
+      "protectedTags": protectedTags,
     };
   }
 

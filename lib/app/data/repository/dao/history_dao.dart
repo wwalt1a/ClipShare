@@ -86,6 +86,11 @@ abstract class HistoryDao {
       FROM HistoryTag
       WHERE tagName IN (:tags)
     ))
+    AND (length(null in (:protectedTags)) = 1 OR id NOT IN (
+      SELECT DISTINCT hisId
+      FROM HistoryTag
+      WHERE tagName IN (:protectedTags)
+    ))
   """;
 
   ///根据过滤器统计数量
@@ -99,6 +104,7 @@ abstract class HistoryDao {
     String startTime,
     String endTime,
     bool saveTop,
+    List<String> protectedTags,
   );
 
   ///根据过滤器获取历史数据
@@ -112,11 +118,12 @@ abstract class HistoryDao {
     String startTime,
     String endTime,
     bool saveTop,
+    List<String> protectedTags,
   );
 
   ///根据设备id统计数量
   Future<int> countByDevId(String devId, int uid) {
-    return count(uid, [], [], [devId], [], "", "", false).then((res) => res ?? 0);
+    return count(uid, [], [], [devId], [], "", "", false, []).then((res) => res ?? 0);
   }
 
   ///更新历史记录来源

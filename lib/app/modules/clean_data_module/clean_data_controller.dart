@@ -55,6 +55,7 @@ class CleanDataController extends GetxController implements DeviceRemoveListener
   final selectedTags = <String>{}.obs;
   final selectedSources = <String>{}.obs;
   final selectedContentTypes = <HistoryContentType>{}.obs;
+  final protectedTags = <String>{}.obs; // 受保护的标签
 
   //endregion
 
@@ -105,6 +106,7 @@ class CleanDataController extends GetxController implements DeviceRemoveListener
       autoClean.value = cfg.autoClean;
       frequency.value = cfg.autoCleanFreq;
       cronInputCtl.text = cfg.cron ?? "";
+      protectedTags.addAll(cfg.protectedTags);
     }
     loadData();
   }
@@ -214,6 +216,7 @@ class CleanDataController extends GetxController implements DeviceRemoveListener
           endTime: endDate.value,
           removeFiles: removeFiles.value,
           saveTop: saveTopData.value,
+          protectedTags: protectedTags.toList(),
         )
         .then((cnt) async {
           if (!mute) {
@@ -319,6 +322,7 @@ class CleanDataController extends GetxController implements DeviceRemoveListener
               contentTypes: selectedContentTypes.toList(),
               saveTopData: saveTopData.value,
               removeFile: removeFiles.value,
+              protectedTags: protectedTags.toList(),
             ),
           )
           .then((_) {
@@ -336,6 +340,7 @@ class CleanDataController extends GetxController implements DeviceRemoveListener
               contentTypes: selectedContentTypes.toList(),
               saveTopData: saveTopData.value,
               removeFiles: removeFiles.value,
+              protectedTags: protectedTags.toList(),
             ),
           )
           .then((_) {
@@ -388,6 +393,7 @@ class CleanDataController extends GetxController implements DeviceRemoveListener
     String? endTime,
     bool removeFiles = false,
     bool saveTop = false,
+    List<String>? protectedTags,
   }) async {
     final histories = await dbService.historyDao.getHistoriesWithFileContent(
       uid,
@@ -398,6 +404,7 @@ class CleanDataController extends GetxController implements DeviceRemoveListener
       startTime ?? "",
       endTime ?? "",
       saveTop,
+      protectedTags ?? [],
     );
     //防止在in中id过多，进行分部处理
     final parts = histories.partition(1000);
