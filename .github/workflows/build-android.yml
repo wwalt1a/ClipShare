@@ -32,15 +32,13 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Auto increment version
-        shell: bash
+      - name: Calculate build number
+        id: build_number
+        shell: pwsh
         run: |
-          COMMIT_COUNT=$(git rev-list --count HEAD)
-          VERSION_NAME=$(grep '^version:' pubspec.yaml | sed 's/version: *\([0-9.]*\)+.*/\1/')
-          NEW_VERSION="${VERSION_NAME}+${COMMIT_COUNT}"
-          sed -i "s/version: ${VERSION_NAME}+[0-9]\+/version: ${NEW_VERSION}/" pubspec.yaml
-          echo "Updated version to: ${NEW_VERSION}"
-          grep "^version:" pubspec.yaml
+          $commitCount = git rev-list --count HEAD
+          Write-Host "Build number: $commitCount"
+          echo "BUILD_NUMBER=$commitCount" >> $env:GITHUB_ENV
 
       - name: Restore keystore
         shell: bash
@@ -70,9 +68,7 @@ jobs:
       - name: Build APK
         shell: pwsh
         run: |
-          cd scripts
-          ./build_apk.bat
-          cd ..
+          flutter build apk --target-platform android-arm,android-arm64,android-x64 --split-per-abi --build-number=$env:BUILD_NUMBER
 
       - name: Prepare APK artifact
         shell: pwsh
