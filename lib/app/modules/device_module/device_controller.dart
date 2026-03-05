@@ -335,23 +335,12 @@ class DeviceController extends GetxController with GetSingleTickerProviderStateM
 
   @override
   void onForget(DevInfo dev, int uid) {
-    //忘记设备，从已配对列表移动到发现设备列表
-    var forgetDev = pairedList.firstWhereOrNull(
-          (element) => element.dev?.guid == dev.guid,
-    );
+    //忘记设备，从已配对列表移除
     pairedList.removeWhere(
           (element) => element.dev?.guid == dev.guid,
     );
-    forgetDev = forgetDev?.copyWith(isPaired: false);
-    if (forgetDev?.isConnected ?? false) {
-      // 已经连接，minVersion必定不空
-      onConnected(
-        dev,
-        forgetDev!.minVersion!,
-        forgetDev.version!,
-        forgetDev.protocol,
-      );
-    }
+    // 强制刷新列表
+    pairedList.refresh();
     _notifyOnlineDevicesWindow();
   }
 
