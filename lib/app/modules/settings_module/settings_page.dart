@@ -1494,10 +1494,32 @@ class SettingsPage extends GetView<SettingsController> {
                                   tooltip: "查看密码",
                                   icon: const Icon(Icons.visibility_outlined, color: Colors.blueGrey),
                                   onPressed: () {
-                                    Global.showTipsDialog(
+                                    showDialog(
                                       context: context,
-                                      title: "同步密码",
-                                      text: appConfig.syncPassword,
+                                      builder: (ctx) => AlertDialog(
+                                        title: const Text("同步密码"),
+                                        content: SelectableText(
+                                          appConfig.syncPassword,
+                                          style: const TextStyle(fontFamily: 'monospace'),
+                                        ),
+                                        actions: [
+                                          TextButton.icon(
+                                            onPressed: () {
+                                              Clipboard.setData(ClipboardData(text: appConfig.syncPassword));
+                                              Global.showSnackBarSuc(
+                                                context: Get.context!,
+                                                text: "密码已复制到剪贴板",
+                                              );
+                                            },
+                                            icon: const Icon(Icons.copy),
+                                            label: const Text("复制"),
+                                          ),
+                                          TextButton(
+                                            onPressed: () => Navigator.of(ctx).pop(),
+                                            child: Text(TranslationKey.dialogConfirmText.tr),
+                                          ),
+                                        ],
+                                      ),
                                     );
                                   },
                                 ),
@@ -1581,10 +1603,40 @@ class SettingsPage extends GetView<SettingsController> {
                                           onPressed: () async {
                                             Navigator.of(ctx).pop();
                                             await appConfig.setSyncPassword();
-                                            Global.showTipsDialog(
+                                            showDialog(
                                               context: Get.context!,
-                                              title: "同步密码已生成",
-                                              text: "密码: ${appConfig.syncPassword}\n\n请复制此密码并在其他设备上手动输入",
+                                              builder: (ctx2) => AlertDialog(
+                                                title: const Text("同步密码已生成"),
+                                                content: Column(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    const Text("请复制此密码并在其他设备上手动输入："),
+                                                    const SizedBox(height: 10),
+                                                    SelectableText(
+                                                      appConfig.syncPassword,
+                                                      style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                                                    ),
+                                                  ],
+                                                ),
+                                                actions: [
+                                                  TextButton.icon(
+                                                    onPressed: () {
+                                                      Clipboard.setData(ClipboardData(text: appConfig.syncPassword));
+                                                      Global.showSnackBarSuc(
+                                                        context: Get.context!,
+                                                        text: "密码已复制到剪贴板",
+                                                      );
+                                                    },
+                                                    icon: const Icon(Icons.copy),
+                                                    label: const Text("复制"),
+                                                  ),
+                                                  TextButton(
+                                                    onPressed: () => Navigator.of(ctx2).pop(),
+                                                    child: Text(TranslationKey.dialogConfirmText.tr),
+                                                  ),
+                                                ],
+                                              ),
                                             );
                                           },
                                           child: Text(TranslationKey.dialogConfirmText.tr),
