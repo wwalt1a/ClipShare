@@ -206,9 +206,11 @@ class HistoryServerSyncIntegration extends GetxService {
     for (final op in operations) {
       try {
         final type = op['type'] as String;
-        final serverItemId = op['serverItemId'] as String?;
+        final serverItemId = op['itemId'] as String?;  // 服务器返回的字段名是 itemId
+        final tagName = op['tagName'] as String?;
 
-        Log.info(tag, "_applyOperations: 处理操作 type=$type, serverItemId=$serverItemId");
+        // 详细日志：输出完整操作数据
+        Log.info(tag, "_applyOperations: 处理操作 type=$type, itemId=$serverItemId, tagName=$tagName, 完整数据=${op.toString()}");
 
         switch (type) {
           case 'addItem':
@@ -217,16 +219,22 @@ class HistoryServerSyncIntegration extends GetxService {
           case 'deleteItem':
             if (serverItemId != null) {
               await _applyDeleteItem(serverItemId);
+            } else {
+              Log.warn(tag, "_applyOperations: deleteItem 缺少 itemId");
             }
             break;
           case 'addTag':
-            if (serverItemId != null) {
-              await _applyAddTag(serverItemId, op['tagName'] as String);
+            if (serverItemId != null && tagName != null) {
+              await _applyAddTag(serverItemId, tagName);
+            } else {
+              Log.warn(tag, "_applyOperations: addTag 缺少必要字段 itemId=$serverItemId, tagName=$tagName");
             }
             break;
           case 'removeTag':
-            if (serverItemId != null) {
-              await _applyRemoveTag(serverItemId, op['tagName'] as String);
+            if (serverItemId != null && tagName != null) {
+              await _applyRemoveTag(serverItemId, tagName);
+            } else {
+              Log.warn(tag, "_applyOperations: removeTag 缺少必要字段 itemId=$serverItemId, tagName=$tagName");
             }
             break;
           default:
