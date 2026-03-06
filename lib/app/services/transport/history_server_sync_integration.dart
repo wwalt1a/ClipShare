@@ -18,7 +18,7 @@ class HistoryServerSyncIntegration extends GetxService {
   final dbService = Get.find<DbService>();
   final serverSyncService = Get.find<ServerSyncService>();
   final queueSyncService = Get.find<ServerQueueSyncService>();
-  late final TagService tagService;
+  TagService? tagService;
 
   @override
   void onInit() {
@@ -304,9 +304,19 @@ class HistoryServerSyncIntegration extends GetxService {
     // 解密标签名
     final tagName = serverSyncService.decrypt(encryptedTagName);
 
+    // 确保tagService已初始化
+    if (tagService == null && Get.isRegistered<TagService>()) {
+      tagService = Get.find<TagService>();
+    }
+
+    if (tagService == null) {
+      Log.error(tag, "_applyAddTag: TagService未注册，无法添加标签");
+      return;
+    }
+
     // 添加标签（不触发同步）
     final historyTag = HistoryTag(tagName, history.id);
-    await tagService.add(historyTag, false);
+    await tagService!.add(historyTag, false);
     Log.info(tag, "_applyAddTag: 添加标签成功 historyId=${history.id}, tag=$tagName");
   }
 
@@ -321,6 +331,16 @@ class HistoryServerSyncIntegration extends GetxService {
     // 解密标签名
     final tagName = serverSyncService.decrypt(encryptedTagName);
 
+    // 确保tagService已初始化
+    if (tagService == null && Get.isRegistered<TagService>()) {
+      tagService = Get.find<TagService>();
+    }
+
+    if (tagService == null) {
+      Log.error(tag, "_applyRemoveTag: TagService未注册，无法移除标签");
+      return;
+    }
+
     // 查找标签
     final existingTag = await dbService.historyTagDao.getByHistoryIdAndName(history.id, tagName);
     if (existingTag == null) {
@@ -329,7 +349,7 @@ class HistoryServerSyncIntegration extends GetxService {
     }
 
     // 移除标签（不触发同步）
-    await tagService.remove(existingTag, false);
+    await tagService!.remove(existingTag, false);
     Log.info(tag, "_applyRemoveTag: 移除标签成功 historyId=${history.id}, tag=$tagName");
   }
 }
