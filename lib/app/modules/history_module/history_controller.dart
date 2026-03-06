@@ -640,6 +640,30 @@ class HistoryController extends GetxController with WidgetsBindingObserver imple
     notifyHistoryWindow();
     _tempList.add(clip);
     debounceUpdate();
+
+    // 根据内容类型自动添加标签（对所有记录执行，无论是否同步）
+    switch (contentType) {
+      case HistoryContentType.text:
+        var rules = jsonDecode(appConfig.tagRules)["data"];
+        for (var rule in rules) {
+          if (history.content.matchRegExp(rule["rule"])) {
+            //添加标签
+            var tag = HistoryTag(rule["name"], history.id);
+            tagService.add(tag);
+          }
+        }
+        break;
+      case HistoryContentType.sms:
+        //添加标签
+        tagService.add(HistoryTag(TranslationKey.sms.tr, history.id));
+        break;
+      case HistoryContentType.notification:
+        //添加通知标签
+        tagService.add(HistoryTag(TranslationKey.notification.tr, history.id));
+        break;
+      default:
+    }
+
     if (!shouldSync) {
       final source = history.source;
       final appInfo = sourceService.getAppInfoByAppId(source);
@@ -719,32 +743,8 @@ class HistoryController extends GetxController with WidgetsBindingObserver imple
     }
     //endregion
 
-    switch (contentType) {
-      case HistoryContentType.text:
-        var rules = jsonDecode(appConfig.tagRules)["data"];
-        for (var rule in rules) {
-          if (history.content.matchRegExp(rule["rule"])) {
-            //添加标签
-            var tag = HistoryTag(rule["name"], history.id);
-            tagService.add(tag);
-          }
-        }
-        break;
-      case HistoryContentType.sms:
-        //添加标签
-        tagService.add(HistoryTag(TranslationKey.sms.tr, history.id));
-        break;
-      case HistoryContentType.notification:
-        //添加通知标签
-        tagService.add(HistoryTag(TranslationKey.notification.tr, history.id));
-        break;
-      default:
-    }
-
-    // 标签添加完成后再推送到服务器
-    if (shouldSync) {
-      _pushToServer(history, contentType);
-    }
+    // 标签添加完成后再推送到服务器（仅当 shouldSync=true 时）
+    _pushToServer(history, contentType);
 
     return cnt;
   }
