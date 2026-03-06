@@ -19,6 +19,7 @@ class ForwardSocketClient {
       "devName": appConfig.localName,
       "platform": defaultTargetPlatform.name.upperFirst,
       "appVersion": appConfig.version.toString(),
+      "groupId": appConfig.syncGroupId,
     };
   }
 

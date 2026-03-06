@@ -19,6 +19,8 @@ enum ForwardMsgType {
   fileSyncNotAllowed,
   //ping
   ping,
+  //服务器通知客户端立即拉取同步数据
+  syncNotify,
   //未知key
   unknown;
 

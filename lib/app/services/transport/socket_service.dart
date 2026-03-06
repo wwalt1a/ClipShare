@@ -48,6 +48,7 @@ import 'package:clipshare/app/utils/extensions/time_extension.dart';
 import 'package:clipshare/app/utils/global.dart';
 import 'package:clipshare/app/utils/log.dart';
 import 'package:clipshare/app/services/transport/server_sync_service.dart';
+import 'package:clipshare/app/services/transport/history_server_sync_integration.dart';
 import 'package:collection/collection.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
@@ -461,6 +462,12 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
     switch (type) {
       case ForwardMsgType.ping:
         _lastForwardServerPingTime = DateTime.now();
+        break;
+      case ForwardMsgType.syncNotify:
+        // 服务器通知有新数据，立即触发一次同步拉取
+        if (Get.isRegistered<HistoryServerSyncIntegration>()) {
+          Get.find<HistoryServerSyncIntegration>().periodicSync();
+        }
         break;
       case ForwardMsgType.fileSyncNotAllowed:
         Global.showTipsDialog(
