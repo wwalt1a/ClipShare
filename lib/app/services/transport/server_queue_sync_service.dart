@@ -127,7 +127,7 @@ class ServerQueueSyncService extends GetxService {
           'fileId': op.fileId,
           'itemType': op.itemType,
           'tagName': op.tagName,
-          'createdAt': op.createdAt.toUtc().toIso8601String(),
+          'createdAt': op.createdAtDateTime.toUtc().toIso8601String(),
         });
       }
 

@@ -85,13 +85,15 @@ class _$_AppDb extends _AppDb {
 
   AppInfoDao? _appInfoDaoInstance;
 
+  ServerOperationQueueDao? _serverOperationQueueDaoInstance;
+
   Future<sqflite.Database> open(
     String path,
     List<Migration> migrations, [
     Callback? callback,
   ]) async {
     final databaseOptions = sqflite.OpenDatabaseOptions(
-      version: 9,
+      version: 10,
       onConfigure: (database) async {
         await database.execute('PRAGMA foreign_keys = ON');
         await callback?.onConfigure?.call(database);
@@ -122,6 +124,8 @@ class _$_AppDb extends _AppDb {
             'CREATE TABLE IF NOT EXISTS `OperationRecord` (`id` INTEGER NOT NULL, `uid` INTEGER NOT NULL, `devId` TEXT NOT NULL, `module` TEXT NOT NULL, `method` TEXT NOT NULL, `data` TEXT NOT NULL, `time` TEXT NOT NULL, `storageSync` INTEGER, PRIMARY KEY (`id`))');
         await database.execute(
             'CREATE TABLE IF NOT EXISTS `AppInfo` (`id` INTEGER NOT NULL, `appId` TEXT NOT NULL, `devId` TEXT NOT NULL, `name` TEXT NOT NULL, `iconB64` TEXT NOT NULL, PRIMARY KEY (`id`))');
+        await database.execute(
+            'CREATE TABLE IF NOT EXISTS `ServerOperationQueue` (`id` INTEGER PRIMARY KEY AUTOINCREMENT, `type` TEXT NOT NULL, `itemId` INTEGER NOT NULL, `serverItemId` TEXT, `tagName` TEXT, `content` TEXT, `fileId` TEXT, `itemType` TEXT, `createdAt` INTEGER NOT NULL, `synced` INTEGER NOT NULL, `invalid` INTEGER NOT NULL)');
         await database.execute(
             'CREATE INDEX `index_History_devId` ON `History` (`devId`)');
         await database.execute(
@@ -181,6 +185,12 @@ class _$_AppDb extends _AppDb {
   @override
   AppInfoDao get appInfoDao {
     return _appInfoDaoInstance ??= _$AppInfoDao(database, changeListener);
+  }
+
+  @override
+  ServerOperationQueueDao get serverOperationQueueDao {
+    return _serverOperationQueueDaoInstance ??=
+        _$ServerOperationQueueDao(database, changeListener);
   }
 }
 
@@ -1527,6 +1537,132 @@ class _$AppInfoDao extends AppInfoDao {
   @override
   Future<int> remove(AppInfo appInfo) {
     return _appInfoDeletionAdapter.deleteAndReturnChangedRows(appInfo);
+  }
+}
+
+class _$ServerOperationQueueDao extends ServerOperationQueueDao {
+  _$ServerOperationQueueDao(
+    this.database,
+    this.changeListener,
+  )   : _queryAdapter = QueryAdapter(database),
+        _serverOperationQueueInsertionAdapter = InsertionAdapter(
+            database,
+            'ServerOperationQueue',
+            (ServerOperationQueue item) => <String, Object?>{
+                  'id': item.id,
+                  'type': item.type,
+                  'itemId': item.itemId,
+                  'serverItemId': item.serverItemId,
+                  'tagName': item.tagName,
+                  'content': item.content,
+                  'fileId': item.fileId,
+                  'itemType': item.itemType,
+                  'createdAt': item.createdAt,
+                  'synced': item.synced ? 1 : 0,
+                  'invalid': item.invalid ? 1 : 0
+                });
+
+  final sqflite.DatabaseExecutor database;
+
+  final StreamController<String> changeListener;
+
+  final QueryAdapter _queryAdapter;
+
+  final InsertionAdapter<ServerOperationQueue>
+      _serverOperationQueueInsertionAdapter;
+
+  @override
+  Future<List<ServerOperationQueue>> getUnsyncedOperations() async {
+    return _queryAdapter.queryList(
+        'SELECT * FROM ServerOperationQueue WHERE synced = 0 AND invalid = 0 ORDER BY createdAt ASC',
+        mapper: (Map<String, Object?> row) => ServerOperationQueue(
+            id: row['id'] as int?,
+            type: row['type'] as String,
+            itemId: row['itemId'] as int,
+            serverItemId: row['serverItemId'] as String?,
+            tagName: row['tagName'] as String?,
+            content: row['content'] as String?,
+            fileId: row['fileId'] as String?,
+            itemType: row['itemType'] as String?,
+            createdAt: row['createdAt'] as int,
+            synced: (row['synced'] as int) != 0,
+            invalid: (row['invalid'] as int) != 0));
+  }
+
+  @override
+  Future<void> markAsSynced(int id) async {
+    await _queryAdapter.queryNoReturn(
+        'UPDATE ServerOperationQueue SET synced = 1 WHERE id = ?1',
+        arguments: [id]);
+  }
+
+  @override
+  Future<void> markAllAsSynced(List<int> ids) async {
+    const offset = 1;
+    final _sqliteVariablesForIds =
+        Iterable<String>.generate(ids.length, (i) => '?${i + offset}')
+            .join(',');
+    await _queryAdapter.queryNoReturn(
+        'UPDATE ServerOperationQueue SET synced = 1 WHERE id IN (' +
+            _sqliteVariablesForIds +
+            ')',
+        arguments: [...ids]);
+  }
+
+  @override
+  Future<void> markAsInvalid(int id) async {
+    await _queryAdapter.queryNoReturn(
+        'UPDATE ServerOperationQueue SET invalid = 1 WHERE id = ?1',
+        arguments: [id]);
+  }
+
+  @override
+  Future<void> markItemOperationsAsInvalid(int itemId) async {
+    await _queryAdapter.queryNoReturn(
+        'UPDATE ServerOperationQueue SET invalid = 1 WHERE itemId = ?1 AND synced = 0',
+        arguments: [itemId]);
+  }
+
+  @override
+  Future<void> deleteSyncedOperations() async {
+    await _queryAdapter
+        .queryNoReturn('DELETE FROM ServerOperationQueue WHERE synced = 1');
+  }
+
+  @override
+  Future<void> deleteInvalidOperations() async {
+    await _queryAdapter
+        .queryNoReturn('DELETE FROM ServerOperationQueue WHERE invalid = 1');
+  }
+
+  @override
+  Future<int?> getUnsyncedCount() async {
+    return _queryAdapter.query(
+        'SELECT COUNT(*) FROM ServerOperationQueue WHERE synced = 0 AND invalid = 0',
+        mapper: (Map<String, Object?> row) => row.values.first as int);
+  }
+
+  @override
+  Future<ServerOperationQueue?> getLatestOperationByItemAndType(
+    int itemId,
+    String type,
+  ) async {
+    return _queryAdapter.query(
+        'SELECT * FROM ServerOperationQueue WHERE itemId = ?1 AND type = ?2 AND synced = 0 ORDER BY createdAt DESC LIMIT 1',
+        mapper: (Map<String, Object?> row) => ServerOperationQueue(id: row['id'] as int?, type: row['type'] as String, itemId: row['itemId'] as int, serverItemId: row['serverItemId'] as String?, tagName: row['tagName'] as String?, content: row['content'] as String?, fileId: row['fileId'] as String?, itemType: row['itemType'] as String?, createdAt: row['createdAt'] as int, synced: (row['synced'] as int) != 0, invalid: (row['invalid'] as int) != 0),
+        arguments: [itemId, type]);
+  }
+
+  @override
+  Future<int> add(ServerOperationQueue operation) {
+    return _serverOperationQueueInsertionAdapter.insertAndReturnId(
+        operation, OnConflictStrategy.replace);
+  }
+
+  @override
+  Future<List<int>> addAll(List<ServerOperationQueue> operations) {
+    return _serverOperationQueueInsertionAdapter.insertListAndReturnIds(
+        operations, OnConflictStrategy.replace);
   }
 }
 

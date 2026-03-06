@@ -27,8 +27,8 @@ class ServerOperationQueue {
   /// 记录类型（addItem时使用：text/image）
   final String? itemType;
 
-  /// 操作时间
-  final DateTime createdAt;
+  /// 操作时间（时间戳，毫秒）
+  final int createdAt;
 
   /// 是否已同步到服务器
   final bool synced;
@@ -59,7 +59,7 @@ class ServerOperationQueue {
     String? content,
     String? fileId,
     String? itemType,
-    DateTime? createdAt,
+    int? createdAt,
     bool? synced,
     bool? invalid,
   }) {
@@ -77,4 +77,10 @@ class ServerOperationQueue {
       invalid: invalid ?? this.invalid,
     );
   }
+
+  /// 获取DateTime对象
+  DateTime get createdAtDateTime => DateTime.fromMillisecondsSinceEpoch(createdAt);
+
+  /// 从DateTime创建
+  static int dateTimeToTimestamp(DateTime dt) => dt.millisecondsSinceEpoch;
 }
