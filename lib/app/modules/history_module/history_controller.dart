@@ -37,6 +37,7 @@ import 'package:clipshare/app/services/config_service.dart';
 import 'package:clipshare/app/services/db_service.dart';
 import 'package:clipshare/app/services/transport/socket_service.dart';
 import 'package:clipshare/app/services/transport/server_sync_service.dart';
+import 'package:clipshare/app/services/transport/history_server_sync_integration.dart';
 import 'package:clipshare/app/services/tag_service.dart';
 import 'package:clipshare/app/utils/constants.dart';
 import 'package:clipshare/app/utils/extensions/file_extension.dart';

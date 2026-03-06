@@ -34,8 +34,8 @@ class ServerQueueSyncService extends GetxService {
     try {
       Log.info(tag, "initSync: 开始首次全量同步");
 
-      // 获取所有历史记录
-      final histories = await dbService.historyDao.getAll();
+      // 获取所有历史记录（使用uid=0获取所有用户的记录）
+      final histories = await dbService.historyDao.getHistoriesPage(0, 0);
       Log.info(tag, "initSync: 找到 ${histories.length} 条历史记录");
 
       if (histories.isEmpty) {
@@ -48,17 +48,16 @@ class ServerQueueSyncService extends GetxService {
       for (final history in histories) {
         // 获取标签
         final tags = await dbService.historyTagDao.getAllByHisId(history.id!);
-        final encryptedTags = tags.map((t) => serverSyncService.encrypt(t.name)).toList();
+        final encryptedTags = tags.map((t) => serverSyncService.encrypt(t.tagName)).toList();
 
         String? encryptedContent;
-        String? fileId;
         String itemType;
 
         if (history.type == 'text') {
           encryptedContent = serverSyncService.encrypt(history.content);
           itemType = 'text';
         } else {
-          fileId = history.fileId;
+          // 图片类型，content字段存储的是文件路径
           itemType = 'image';
         }
 
@@ -66,9 +65,9 @@ class ServerQueueSyncService extends GetxService {
           'itemId': history.serverItemId ?? history.id.toString(),
           'type': itemType,
           'content': encryptedContent,
-          'fileId': fileId,
+          'fileId': itemType == 'image' ? history.content : null,
           'tags': encryptedTags,
-          'createdAt': history.time.toUtc().toIso8601String(),
+          'createdAt': history.time,
         });
       }
 
@@ -98,7 +97,7 @@ class ServerQueueSyncService extends GetxService {
       Log.error(tag, "initSync: 同步失败 ${response.statusCode} ${response.body}");
       return false;
     } catch (err, stack) {
-      Log.error(tag, "initSync: 异常", err, stack);
+      Log.error(tag, "initSync: 异常 $err", stack);
       return false;
     }
   }
@@ -177,7 +176,7 @@ class ServerQueueSyncService extends GetxService {
 
         return false;
       } catch (err, stack) {
-        Log.error(tag, "pushQueue: 异常", err, stack);
+        Log.error(tag, "pushQueue: 异常 $err", stack);
 
         // 如果不是最后一次尝试，等待后重试
         if (retryCount < maxRetries) {
@@ -244,7 +243,7 @@ class ServerQueueSyncService extends GetxService {
 
         return [];
       } catch (err, stack) {
-        Log.error(tag, "pullOperations: 异常", err, stack);
+        Log.error(tag, "pullOperations: 异常 $err", stack);
 
         // 如果不是最后一次尝试，等待后重试
         if (retryCount < maxRetries) {

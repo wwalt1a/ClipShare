@@ -40,14 +40,13 @@ class HistoryServerSyncIntegration extends GetxService {
 
       // 加密内容
       String? encryptedContent;
-      String? fileId;
       String itemType;
 
       if (history.type == 'text') {
         encryptedContent = serverSyncService.encrypt(history.content);
         itemType = 'text';
       } else {
-        fileId = history.fileId;
+        // 图片类型，content字段存储的是文件路径
         itemType = 'image';
       }
 
@@ -57,9 +56,9 @@ class HistoryServerSyncIntegration extends GetxService {
         itemId: history.id!,
         serverItemId: history.serverItemId,
         content: encryptedContent,
-        fileId: fileId,
+        fileId: itemType == 'image' ? history.content : null,
         itemType: itemType,
-        createdAt: ServerOperationQueue.dateTimeToTimestamp(history.time),
+        createdAt: ServerOperationQueue.dateTimeToTimestamp(DateTime.parse(history.time)),
       );
       await queueSyncService.addOperation(addItemOp);
 
@@ -78,7 +77,7 @@ class HistoryServerSyncIntegration extends GetxService {
 
       Log.info(tag, "onHistoryAdded: 已添加到队列");
     } catch (err, stack) {
-      Log.error(tag, "onHistoryAdded: 异常", err, stack);
+      Log.error(tag, "onHistoryAdded: 异常 $err", stack);
     }
   }
 
@@ -105,7 +104,7 @@ class HistoryServerSyncIntegration extends GetxService {
 
       Log.info(tag, "onHistoryDeleted: 已添加删除操作");
     } catch (err, stack) {
-      Log.error(tag, "onHistoryDeleted: 异常", err, stack);
+      Log.error(tag, "onHistoryDeleted: 异常 $err", stack);
     }
   }
 
@@ -128,7 +127,7 @@ class HistoryServerSyncIntegration extends GetxService {
 
       Log.info(tag, "onTagAdded: 已添加到队列");
     } catch (err, stack) {
-      Log.error(tag, "onTagAdded: 异常", err, stack);
+      Log.error(tag, "onTagAdded: 异常 $err", stack);
     }
   }
 
@@ -151,7 +150,7 @@ class HistoryServerSyncIntegration extends GetxService {
 
       Log.info(tag, "onTagRemoved: 已添加到队列");
     } catch (err, stack) {
-      Log.error(tag, "onTagRemoved: 异常", err, stack);
+      Log.error(tag, "onTagRemoved: 异常 $err", stack);
     }
   }
 
@@ -198,7 +197,7 @@ class HistoryServerSyncIntegration extends GetxService {
 
       Log.info(tag, "periodicSync: 同步完成");
     } catch (err, stack) {
-      Log.error(tag, "periodicSync: 异常", err, stack);
+      Log.error(tag, "periodicSync: 异常 $err", stack);
     }
   }
 
@@ -228,7 +227,7 @@ class HistoryServerSyncIntegration extends GetxService {
             Log.warn(tag, "_applyOperations: 未知操作类型 $type");
         }
       } catch (err, stack) {
-        Log.error(tag, "_applyOperations: 应用操作失败", err, stack);
+        Log.error(tag, "_applyOperations: 应用操作失败 $err", stack);
       }
     }
   }
@@ -265,12 +264,14 @@ class HistoryServerSyncIntegration extends GetxService {
 
     // 创建历史记录
     final history = History(
+      id: 0, // 自动生成
+      uid: appConfig.userId,
       content: content,
       type: itemType,
-      time: createdAt,
+      time: createdAt.toIso8601String(),
       devId: appConfig.device.guid,
+      size: content.length,
       serverItemId: serverItemId,
-      fileId: fileId,
     );
 
     // 添加到数据库（不触发同步）
@@ -304,8 +305,8 @@ class HistoryServerSyncIntegration extends GetxService {
     final tagName = serverSyncService.decrypt(encryptedTagName);
 
     // 添加标签（不触发同步）
-    final tag = HistoryTag(tagName, history.id);
-    await tagService.add(tag, false);
+    final historyTag = HistoryTag(tagName, history.id);
+    await tagService.add(historyTag, false);
     Log.info(tag, "_applyAddTag: 添加标签成功 historyId=${history.id}, tag=$tagName");
   }
 

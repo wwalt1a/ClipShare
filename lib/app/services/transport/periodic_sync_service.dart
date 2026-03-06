@@ -47,7 +47,7 @@ class PeriodicSyncService extends GetxService {
     });
   }
 
-  void _performSync() async {
+  Future<void> _performSync() async {
     if (!_isEnabled) {
       return;
     }
@@ -57,7 +57,7 @@ class PeriodicSyncService extends GetxService {
       await _syncIntegration.periodicSync();
       Log.info(tag, "_performSync: 定期同步完成");
     } catch (err, stack) {
-      Log.error(tag, "_performSync: 定期同步异常", err, stack);
+      Log.error(tag, "_performSync: 定期同步异常 $err", stack);
     }
   }
 
