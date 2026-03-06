@@ -217,54 +217,56 @@ class CleanDataController extends GetxController implements DeviceRemoveListener
     if (!mute) {
       Global.showLoadingDialog(context: Get.context!);
     }
-    deleteCascade(
-          uid: appConfig.userId,
-          types: selectedContentTypes.map((item) => item.value).toList(),
-          tags: selectedTags.toList(),
-          devIds: selectedDevs.toList(),
-          appIds: selectedSources.toList(),
-          startTime: startDate.value,
-          endTime: endDate.value,
-          removeFiles: removeFiles.value,
-          saveTop: saveTopData.value,
-          protectedTags: protectedTags.toList(),
-        )
-        .then((cnt) async {
-          if (!mute) {
-            //关闭加载弹窗
-            Get.back();
-            Global.showSnackBarSuc(context: Get.context!, text: "${TranslationKey.deleteSuccess.tr}: $cnt ${TranslationKey.deleteItemsUnit.tr}");
-          }
-          refreshHistoryPage();
-          final devs = selectedDevs.toList();
-          for (var devId in devs) {
-            //本机跳过
-            if (devId == appConfig.device.guid) {
-              return;
-            }
-            final cnt = await dbService.historyDao.countByDevId(devId, appConfig.userId);
-            if (cnt > 0) {
-              //数据未清空，跳过
-              return;
-            }
-            //如果设备离线并未配对则删除，否则不能删
-            if (sktService.isOnline(devId, true)) {
-              print("is online");
-              return;
-            }
-            var success = await devService.remove(devId);
-            print("delete device success $success");
-            if (success) {}
-          }
-        })
-        .catchError((err, stack) {
-          Log.error(logTag, "$err: $stack");
-          if (!mute) {
-            //关闭加载弹窗
-            Get.back();
-            Global.showSnackBarWarn(context: Get.context!, text: TranslationKey.deletionFailed.tr);
-          }
-        });
+
+    try {
+      final cnt = await deleteCascade(
+        uid: appConfig.userId,
+        types: selectedContentTypes.map((item) => item.value).toList(),
+        tags: selectedTags.toList(),
+        devIds: selectedDevs.toList(),
+        appIds: selectedSources.toList(),
+        startTime: startDate.value,
+        endTime: endDate.value,
+        removeFiles: removeFiles.value,
+        saveTop: saveTopData.value,
+        protectedTags: protectedTags.toList(),
+      );
+
+      if (!mute) {
+        //关闭加载弹窗
+        Get.back();
+        Global.showSnackBarSuc(context: Get.context!, text: "${TranslationKey.deleteSuccess.tr}: $cnt ${TranslationKey.deleteItemsUnit.tr}");
+      }
+
+      refreshHistoryPage();
+
+      final devs = selectedDevs.toList();
+      for (var devId in devs) {
+        //本机跳过
+        if (devId == appConfig.device.guid) {
+          continue;
+        }
+        final cnt = await dbService.historyDao.countByDevId(devId, appConfig.userId);
+        if (cnt > 0) {
+          //数据未清空，跳过
+          continue;
+        }
+        //如果设备离线并未配对则删除，否则不能删
+        if (sktService.isOnline(devId, true)) {
+          print("is online");
+          continue;
+        }
+        var success = await devService.remove(devId);
+        print("delete device success $success");
+      }
+    } catch (err, stack) {
+      Log.error(logTag, "$err", stack);
+      if (!mute) {
+        //关闭加载弹窗
+        Get.back();
+        Global.showSnackBarWarn(context: Get.context!, text: TranslationKey.deletionFailed.tr);
+      }
+    }
   }
 
   ///清理设备同步记录
