@@ -301,11 +301,11 @@ class HistoryServerSyncIntegration extends GetxService {
     // 创建历史记录
     Log.info(tag, "_applyAddItem: 创建History对象");
     final history = History(
-      id: 0, // 自动生成
+      id: appConfig.snowflake.nextId(),
       uid: appConfig.userId,
       content: content,
       type: dbType,
-      time: createdAt.toIso8601String(),
+      time: createdAt.toLocal().toString(),
       devId: appConfig.device.guid,
       size: content.length,
       serverItemId: serverItemId,
