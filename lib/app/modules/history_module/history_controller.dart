@@ -775,6 +775,12 @@ class HistoryController extends GetxController with WidgetsBindingObserver imple
   }
 
   ///推送本机内容到中转服务器（异步，不阻塞主流程）
+  /// 推送历史记录到服务器（公开方法，供外部调用）
+  void pushHistoryToServer(History history) {
+    final contentType = HistoryContentType.parse(history.type);
+    _pushToServer(history, contentType);
+  }
+
   void _pushToServer(History history, HistoryContentType contentType) {
     if (!Get.isRegistered<ServerSyncService>()) {
       Log.warn(tag, "_pushToServer: ServerSyncService 未注册");
