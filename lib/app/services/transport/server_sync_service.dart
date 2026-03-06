@@ -209,9 +209,12 @@ class ServerSyncService extends GetxService {
           Log.warn(tag, "parse item error: $e");
         }
       }
+      // 无论是否有新记录，都更新拉取时间，避免重复拉取
+      await _setLastPullTime(DateTime.now());
       if (items.isNotEmpty) {
-        await _setLastPullTime(DateTime.now());
         Log.info(tag, "pullNewItems: 成功解析 ${items.length} 条记录");
+      } else {
+        Log.info(tag, "pullNewItems: 无新记录，已更新拉取时间");
       }
       return items;
     } catch (e, s) {
