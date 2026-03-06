@@ -392,6 +392,30 @@ class CleanDataController extends GetxController implements DeviceRemoveListener
         });
   }
 
+  ///保存受保护标签配置（立即持久化）
+  void saveProtectedTagsConfig() {
+    final cfg = appConfig.cleanDataConfig;
+    if (cfg == null) {
+      // 如果没有配置，创建一个新的
+      appConfig.setCleanDataConfig(
+        CleanDataConfig(
+          tags: selectedTags.toList(),
+          devIds: selectedDevs.toList(),
+          contentTypes: selectedContentTypes.toList(),
+          saveTopData: saveTopData.value,
+          removeFiles: removeFiles.value,
+          protectedTags: protectedTags.toList(),
+        ),
+      );
+    } else {
+      // 更新现有配置
+      appConfig.setCleanDataConfig(
+        cfg.copyWith(protectedTags: protectedTags.toList()),
+      );
+    }
+    Log.info(logTag, "saveProtectedTagsConfig: 已保存受保护标签 ${protectedTags.toList()}");
+  }
+
   ///级联删除
   Future<int> deleteCascade({
     required int uid,

@@ -516,6 +516,8 @@ class CleanDataPage extends GetView<CleanDataController> {
                                     } else {
                                       controller.protectedTags.add(tag);
                                     }
+                                    // 立即保存受保护标签配置
+                                    controller.saveProtectedTagsConfig();
                                   },
                                   selected: controller.protectedTags.contains(tag),
                                   label: Row(
