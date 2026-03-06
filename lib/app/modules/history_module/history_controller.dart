@@ -637,6 +637,14 @@ class HistoryController extends GetxController with WidgetsBindingObserver imple
       final devService = Get.find<DeviceService>();
       androidChannelService.sendHistoryChangedBroadcast(contentType, history.content, history.devId, devService.getName(history.devId));
     }
+    // 如果携带 serverItemId，先检查本地是否已存在相同记录（防止服务器队列路径和 P2P 路径重复添加）
+    if (history.serverItemId != null && history.serverItemId!.isNotEmpty) {
+      final existing = await dbService.historyDao.getByServerItemId(history.serverItemId!);
+      if (existing != null) {
+        Log.info(tag, "addData: 记录已存在，跳过 serverItemId=${history.serverItemId}, existingId=${existing.id}");
+        return 0;
+      }
+    }
     var cnt = await dbService.historyDao.add(clip.data);
     if (cnt <= 0) return cnt;
     notifyHistoryWindow();
