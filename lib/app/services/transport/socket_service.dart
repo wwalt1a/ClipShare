@@ -1256,10 +1256,6 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
       reqMissingData();
       // 如果使用转发服务器，从云端拉取离线期间的剪贴板记录
       if (client.isForwardMode) {
-        // 重置拉取时间，确保能拉到所有记录（避免 _lastPullTime 缓存导致漏拉）
-        if (Get.isRegistered<ServerSyncService>()) {
-          Get.find<ServerSyncService>().resetPullTime();
-        }
         _pullFromServer();
       }
     }

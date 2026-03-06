@@ -36,9 +36,9 @@ class ServerSyncService extends GetxService {
   }
 
   // 设置上次拉取时间（持久化到 config）
-  void _setLastPullTime(DateTime time) {
+  Future<void> _setLastPullTime(DateTime time) async {
     Log.info(tag, "_setLastPullTime: 保存拉取时间 ${time.toLocal()} (${time.millisecondsSinceEpoch})");
-    appConfig.setLastServerPullTime(time.millisecondsSinceEpoch);
+    await appConfig.setLastServerPullTime(time.millisecondsSinceEpoch);
     Log.info(tag, "_setLastPullTime: 验证保存结果 ${appConfig.lastServerPullTime}");
   }
 
@@ -210,7 +210,7 @@ class ServerSyncService extends GetxService {
         }
       }
       if (items.isNotEmpty) {
-        _setLastPullTime(DateTime.now());
+        await _setLastPullTime(DateTime.now());
         Log.info(tag, "pullNewItems: 成功解析 ${items.length} 条记录");
       }
       return items;
