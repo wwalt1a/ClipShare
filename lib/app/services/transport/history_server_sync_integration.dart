@@ -69,7 +69,7 @@ class HistoryServerSyncIntegration extends GetxService {
       );
       await queueSyncService.addOperation(addItemOp);
 
-      // 添加标签操作
+      // 添加标签操作（使用与 addItem 相同的时间戳，避免 since 时间窗口漏掉标签）
       for (final tagName in tags) {
         final encryptedTag = serverSyncService.encrypt(tagName);
         final addTagOp = ServerOperationQueue(
@@ -77,7 +77,7 @@ class HistoryServerSyncIntegration extends GetxService {
           itemId: history.id!,
           serverItemId: history.serverItemId,
           tagName: encryptedTag,
-          createdAt: ServerOperationQueue.dateTimeToTimestamp(DateTime.now()),
+          createdAt: ServerOperationQueue.dateTimeToTimestamp(DateTime.parse(history.time)),
         );
         await queueSyncService.addOperation(addTagOp);
       }
@@ -319,6 +319,7 @@ class HistoryServerSyncIntegration extends GetxService {
       Log.info(tag, "_applyAddItem: 添加记录成功 historyId=$historyId, serverItemId=$serverItemId");
     } else {
       Log.error(tag, "_applyAddItem: 添加记录失败 historyId=$historyId, serverItemId=$serverItemId");
+      return; // Exit early — don't proceed if DB add failed
     }
   }
 
