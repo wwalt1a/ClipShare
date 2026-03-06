@@ -22,12 +22,23 @@ class ServerSyncService extends GetxService {
   String get _apiBase => appConfig.forwardServer!.apiBase;
   String get _groupId => appConfig.syncGroupId;
 
-  // 上次拉取时间（持久化到 config 可做更复杂处理，此处用内存值）
-  DateTime _lastPullTime = DateTime.fromMillisecondsSinceEpoch(0);
+  // 上次拉取时间（从 config 持久化读取）
+  DateTime get _lastPullTime {
+    final timestamp = appConfig.lastServerPullTime;
+    if (timestamp == null || timestamp == 0) {
+      return DateTime.fromMillisecondsSinceEpoch(0);
+    }
+    return DateTime.fromMillisecondsSinceEpoch(timestamp);
+  }
+
+  // 设置上次拉取时间（持久化到 config）
+  void _setLastPullTime(DateTime time) {
+    appConfig.setLastServerPullTime(time.millisecondsSinceEpoch);
+  }
 
   /// 重置拉取时间，用于强制拉取所有记录
   void resetPullTime() {
-    _lastPullTime = DateTime.fromMillisecondsSinceEpoch(0);
+    appConfig.setLastServerPullTime(0);
     Log.info(tag, "resetPullTime: 已重置拉取时间");
   }
 
@@ -54,7 +65,7 @@ class ServerSyncService extends GetxService {
 
   // ── 推送文本 ─────────────────────────────────────────────
 
-  Future<String?> pushText(History history) async {
+  Future<String?> pushText(History history, List<String> tags) async {
     if (!_isEnabled) {
       Log.warn(tag, "pushText: 云端同步未启用 (forwardServer=${appConfig.forwardServer != null}, hasSyncPassword=${appConfig.hasSyncPassword})");
       return null;
@@ -65,9 +76,10 @@ class ServerSyncService extends GetxService {
         "groupId": _groupId,
         "devId": appConfig.device.guid,
         "content": encrypted,
+        "tags": tags.join(','), // 标签以逗号分隔
       });
       final uri = Uri.parse("$_apiBase/push/text");
-      Log.info(tag, "pushText: 请求 $uri, groupId=$_groupId, devId=${appConfig.device.guid}");
+      Log.info(tag, "pushText: 请求 $uri, groupId=$_groupId, devId=${appConfig.device.guid}, tags=$tags");
       final resp = await http
           .post(
             uri,
@@ -93,7 +105,7 @@ class ServerSyncService extends GetxService {
   // ── 推送图片 ─────────────────────────────────────────────
 
   /// [imagePath] 本地图片文件路径，[imageExpireDays] 服务器保留天数（由服务器决定为30天）
-  Future<Map<String, dynamic>?> pushImage(String imagePath) async {
+  Future<Map<String, dynamic>?> pushImage(String imagePath, List<String> tags) async {
     if (!_isEnabled) {
       Log.warn(tag, "pushImage: 云端同步未启用 (forwardServer=${appConfig.forwardServer != null}, hasSyncPassword=${appConfig.hasSyncPassword})");
       return null;
@@ -112,10 +124,11 @@ class ServerSyncService extends GetxService {
       Log.info(tag, "pushImage: 加密后 ${encBytes.length} 字节");
 
       final uri = Uri.parse("$_apiBase/push/image");
-      Log.info(tag, "pushImage: 请求 $uri");
+      Log.info(tag, "pushImage: 请求 $uri, tags=$tags");
       final request = http.MultipartRequest("POST", uri)
         ..fields["groupId"] = _groupId
         ..fields["devId"] = appConfig.device.guid
+        ..fields["tags"] = tags.join(',') // 标签以逗号分隔
         ..files.add(
           http.MultipartFile.fromBytes("data", encBytes, filename: "image.bin"),
         );
@@ -184,7 +197,7 @@ class ServerSyncService extends GetxService {
         }
       }
       if (items.isNotEmpty) {
-        _lastPullTime = DateTime.now();
+        _setLastPullTime(DateTime.now());
         Log.info(tag, "pullNewItems: 成功解析 ${items.length} 条记录");
       }
       return items;
@@ -262,6 +275,7 @@ class ServerClipItem {
   final String fileId;
   final DateTime createdAt;
   final DateTime? expireAt;
+  final List<String> tags; // 标签列表
   String? decryptedContent;
 
   ServerClipItem({
@@ -272,10 +286,24 @@ class ServerClipItem {
     required this.fileId,
     required this.createdAt,
     this.expireAt,
+    this.tags = const [],
     this.decryptedContent,
   });
 
   factory ServerClipItem.fromJson(Map<String, dynamic> json) {
+    // 解析标签，支持逗号分隔的字符串或数组
+    List<String> parseTags(dynamic tagsData) {
+      if (tagsData == null) return [];
+      if (tagsData is String) {
+        if (tagsData.isEmpty) return [];
+        return tagsData.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+      }
+      if (tagsData is List) {
+        return tagsData.map((e) => e.toString()).toList();
+      }
+      return [];
+    }
+
     return ServerClipItem(
       id: json["Id"] ?? "",
       devId: json["DevId"] ?? "",
@@ -286,6 +314,7 @@ class ServerClipItem {
       expireAt: json["ExpireAt"] != null
           ? DateTime.tryParse(json["ExpireAt"])
           : null,
+      tags: parseTags(json["Tags"]),
     );
   }
 

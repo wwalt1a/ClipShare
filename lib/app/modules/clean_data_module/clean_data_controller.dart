@@ -20,6 +20,7 @@ import 'package:clipshare/app/services/clipboard_source_service.dart';
 import 'package:clipshare/app/services/config_service.dart';
 import 'package:clipshare/app/services/db_service.dart';
 import 'package:clipshare/app/services/device_service.dart';
+import 'package:clipshare/app/services/tag_service.dart';
 import 'package:clipshare/app/services/transport/connection_registry_service.dart';
 import 'package:clipshare/app/services/transport/socket_service.dart';
 import 'package:clipshare/app/services/transport/server_sync_service.dart';
@@ -31,6 +32,7 @@ import 'package:clipshare/app/utils/global.dart';
 import 'package:clipshare/app/utils/log.dart';
 import 'package:clipshare/app/widgets/radio_group.dart';
 import 'package:clipshare/app/widgets/dialog/single_select_dialog.dart';
+import 'package:clipshare/app/listeners/tag_changed_listener.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -39,13 +41,14 @@ import '../../widgets/empty_content.dart';
  * GetX Template Generator - fb.com/htngu.99
  * */
 
-class CleanDataController extends GetxController implements DeviceRemoveListener, DevAliveListener {
+class CleanDataController extends GetxController implements DeviceRemoveListener, DevAliveListener, TagChangedListener {
   final dbService = Get.find<DbService>();
   final connRegService = Get.find<ConnectionRegistryService>();
   final appConfig = Get.find<ConfigService>();
   final devService = Get.find<DeviceService>();
   final sktService = Get.find<SocketService>();
   final sourceService = Get.find<ClipboardSourceService>();
+  final tagService = Get.find<TagService>();
   final logTag = "CleanDataController";
   final allDevices = <Device>{}.obs;
   final allTags = <String>{}.obs;
@@ -97,6 +100,7 @@ class CleanDataController extends GetxController implements DeviceRemoveListener
     super.onReady();
     devService.addDevRemoveListener(this);
     connRegService.addDevAliveListener(this);
+    tagService.addListener(this);
     final cfg = appConfig.cleanDataConfig;
     if (cfg != null) {
       selectedDevs.addAll(cfg.devIds);
@@ -115,6 +119,7 @@ class CleanDataController extends GetxController implements DeviceRemoveListener
   void onClose() {
     devService.removeDevRemoveListener(this);
     connRegService.removeDevAliveListener(this);
+    tagService.removeListener(this);
   }
 
   ///加载搜索条件
@@ -533,5 +538,19 @@ class CleanDataController extends GetxController implements DeviceRemoveListener
     print("on remove $devId");
     allDevices.removeWhere((item) => item.guid == devId);
     selectedDevs.remove(devId);
+  }
+
+  @override
+  void onDistinctAdd(String tagName) {
+    // 新标签添加时，添加到列表
+    allTags.add(tagName);
+  }
+
+  @override
+  void onDistinctRemove(String tagName) {
+    // 标签完全删除时（没有任何历史记录使用），从列表中移除
+    allTags.remove(tagName);
+    selectedTags.remove(tagName);
+    protectedTags.remove(tagName);
   }
 }

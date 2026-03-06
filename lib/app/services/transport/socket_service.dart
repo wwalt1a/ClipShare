@@ -16,7 +16,9 @@ import 'package:clipshare/app/data/models/message_data.dart';
 import 'package:clipshare/app/data/models/version.dart';
 import 'package:clipshare/app/data/repository/entity/tables/app_info.dart';
 import 'package:clipshare/app/data/repository/entity/tables/history.dart';
+import 'package:clipshare/app/data/repository/entity/tables/history_tag.dart';
 import 'package:clipshare/app/modules/history_module/history_controller.dart';
+import 'package:clipshare/app/services/tag_service.dart';
 import 'package:clipshare/app/handlers/dev_pairing_handler.dart';
 import 'package:clipshare/app/handlers/socket/forward_socket_client.dart';
 import 'package:clipshare/app/handlers/socket/secure_socket_client.dart';
@@ -1704,6 +1706,14 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
             serverExpireAt: item.expireAt?.toIso8601String(),
           );
           historyController.addData(history, false);
+          // 添加标签
+          if (item.tags.isNotEmpty) {
+            final tagService = Get.find<TagService>();
+            for (final tagName in item.tags) {
+              await tagService.add(HistoryTag(tagName, history.id), false);
+            }
+            Log.info(tag, "已添加标签: ${item.tags}");
+          }
           Log.info(tag, "记录已添加到本地数据库");
         } catch (e, s) {
           Log.error(tag, "pullFromServer item error: $e\n$s");

@@ -637,6 +637,16 @@ class ConfigService extends GetxService {
     );
   }
 
+  // 上次从服务器拉取数据的时间戳（毫秒）
+  final _lastServerPullTime = Rx<int?>(null);
+
+  int? get lastServerPullTime => _lastServerPullTime.value;
+
+  Future<void> setLastServerPullTime(int timestamp) async {
+    await configDao.addOrUpdate(ConfigKey.lastServerPullTime, timestamp.toString());
+    _lastServerPullTime.value = timestamp;
+  }
+
   //endregion
 
   //endregion
@@ -848,6 +858,7 @@ class ConfigService extends GetxService {
     _recopyOnScreenUnlocked.value = await cfg.getConfigByKey(ConfigKey.recopyOnScreenUnlocked, false);
     _excludeFormat.value = await cfg.getConfigByKey(ConfigKey.excludeFormat, true);
     _syncPassword.value = await cfg.getConfigByKey(ConfigKey.syncPassword, '');
+    _lastServerPullTime.value = int.tryParse(await cfg.getConfigByKey(ConfigKey.lastServerPullTime, '0'));
   }
 
   ///初始化路径信息

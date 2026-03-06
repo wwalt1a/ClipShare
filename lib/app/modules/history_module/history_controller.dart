@@ -778,9 +778,11 @@ class HistoryController extends GetxController with WidgetsBindingObserver imple
       return;
     }
     final serverSync = Get.find<ServerSyncService>();
-    Log.info(tag, "_pushToServer: 准备推送 ${contentType.name} 到服务器");
+    final tagService = Get.find<TagService>();
+    final tags = tagService.getTagList(history.id).toList();
+    Log.info(tag, "_pushToServer: 准备推送 ${contentType.name} 到服务器, tags=$tags");
     if (contentType == HistoryContentType.image) {
-      serverSync.pushImage(history.content).then((data) {
+      serverSync.pushImage(history.content, tags).then((data) {
         if (data == null) {
           Log.warn(tag, "_pushToServer: pushImage 返回 null（可能未启用或失败）");
           return;
@@ -802,7 +804,7 @@ class HistoryController extends GetxController with WidgetsBindingObserver imple
         });
       }).catchError((e) { Log.error(tag, "pushImage to server error: $e"); });
     } else if (contentType == HistoryContentType.text) {
-      serverSync.pushText(history).then((serverItemId) {
+      serverSync.pushText(history, tags).then((serverItemId) {
         if (serverItemId == null) {
           Log.warn(tag, "_pushToServer: pushText 返回 null（可能未启用或失败）");
           return;
