@@ -248,8 +248,6 @@ abstract class HistoryDao {
   Future<int?> deleteByIds(List<int> ids, int uid);
 
   Future<void> deleteByCascade(int id) async {
-    // 先查出条目，获取 serverItemId 用于服务器同步删除
-    final history = await dbService.historyDao.getById(id);
     final tags = await dbService.historyTagDao.getAllByHisId(id);
     //删除tag
     final success = ((await dbService.historyTagDao.removeAllByHisId(id)) ?? 0) > 0;
@@ -266,11 +264,6 @@ abstract class HistoryDao {
     //移除未使用的剪贴板来源信息
     final sourceService = Get.find<ClipboardSourceService>();
     await sourceService.removeNotUsed();
-    // 同步删除到服务器
-    final serverItemId = history?.serverItemId;
-    if (serverItemId != null && Get.isRegistered<ServerSyncService>()) {
-      Get.find<ServerSyncService>().deleteItems([serverItemId]);
-    }
   }
 
   ///查询历史记录中的不同类型的数量
