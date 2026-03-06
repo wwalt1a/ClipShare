@@ -89,7 +89,7 @@ class ServerQueueSyncService extends GetxService {
 
       if (response.statusCode == 200) {
         final result = jsonDecode(response.body);
-        if (result['success'] == true) {
+        if (result['code'] == 200) {
           Log.info(tag, "initSync: 全量同步成功");
           return true;
         }
@@ -146,7 +146,7 @@ class ServerQueueSyncService extends GetxService {
 
       if (response.statusCode == 200) {
         final result = jsonDecode(response.body);
-        if (result['success'] == true) {
+        if (result['code'] == 200) {
           // 标记为已同步
           final ids = operations.map((o) => o.id!).toList();
           await dbService.serverOpQueueDao.markAllAsSynced(ids);
@@ -181,7 +181,7 @@ class ServerQueueSyncService extends GetxService {
 
       if (response.statusCode == 200) {
         final result = jsonDecode(response.body);
-        if (result['success'] == true && result['data'] != null) {
+        if (result['code'] == 200 && result['data'] != null) {
           final operations = (result['data']['operations'] as List)
               .map((e) => e as Map<String, dynamic>)
               .toList();
