@@ -1,6 +1,7 @@
 import 'package:clipshare/app/data/repository/entity/tables/history.dart';
 import 'package:clipshare/app/data/repository/entity/tables/history_tag.dart';
 import 'package:clipshare/app/data/repository/entity/tables/server_operation_queue.dart';
+import 'package:clipshare/app/data/enums/history_content_type.dart';
 import 'package:clipshare/app/services/config_service.dart';
 import 'package:clipshare/app/services/db_service.dart';
 import 'package:clipshare/app/services/tag_service.dart';
@@ -293,13 +294,17 @@ class HistoryServerSyncIntegration extends GetxService {
     Log.info(tag, "_applyAddItem: 解析创建时间 createdAtStr=$createdAtStr");
     final createdAt = DateTime.parse(createdAtStr);
 
+    // 转换类型为数据库格式（首字母大写）
+    final dbType = HistoryContentType.parse(itemType).value;
+    Log.info(tag, "_applyAddItem: 类型转换 itemType=$itemType -> dbType=$dbType");
+
     // 创建历史记录
     Log.info(tag, "_applyAddItem: 创建History对象");
     final history = History(
       id: 0, // 自动生成
       uid: appConfig.userId,
       content: content,
-      type: itemType,
+      type: dbType,
       time: createdAt.toIso8601String(),
       devId: appConfig.device.guid,
       size: content.length,
