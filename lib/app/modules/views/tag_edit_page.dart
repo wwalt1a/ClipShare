@@ -112,16 +112,6 @@ class _TagEditPageState extends State<TagEditPage> {
               link
                   .then((value) => tagService.removeList(willRmList))
                   .then((value) => tagService.addList(willAddList))
-                  .then((value) async {
-                    // 标签更新后，推送到服务器
-                    if (Get.isRegistered<HistoryController>()) {
-                      final historyController = Get.find<HistoryController>();
-                      final history = await dbService.historyDao.getById(widget.hisId);
-                      if (history != null) {
-                        historyController.pushHistoryToServer(history);
-                      }
-                    }
-                  })
                   .then(
                     (value) => setState(() {
                       saving = false;
