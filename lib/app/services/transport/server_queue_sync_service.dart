@@ -20,7 +20,11 @@ class ServerQueueSyncService extends GetxService {
   bool get _isEnabled =>
       appConfig.forwardServer != null && appConfig.hasSyncPassword;
 
-  String get _apiBase => appConfig.forwardServer!.apiBase;
+  String get _apiBase {
+    final base = appConfig.forwardServer!.apiBaseUrl.trim().replaceAll(RegExp(r'/+$'), '');
+    if (base.isNotEmpty) return base;
+    return "http://${appConfig.forwardServer!.host}";
+  }
   String get _groupId => appConfig.syncGroupId;
   String get _devId => appConfig.device.guid;
 
