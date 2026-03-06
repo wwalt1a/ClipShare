@@ -67,9 +67,9 @@ class TagSyncHandler implements SyncListener {
       case OpMethod.delete:
         //delete后仅有id，无hisId，需要本地查一次
         final dbTag = await dbService.historyTagDao.getById(tag.id);
-        success = await dbService.historyTagDao.removeById(tag.id).then((cnt) => cnt ?? 0) > 0;
         if (dbTag != null) {
           tagService.remove(dbTag, false);
+          success = true;
         }
         break;
       default:
