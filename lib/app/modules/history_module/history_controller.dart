@@ -644,7 +644,7 @@ class HistoryController extends GetxController with WidgetsBindingObserver imple
     debounceUpdate();
 
     // 根据内容类型自动添加标签（对所有记录执行，无论是否同步）
-    // 使用 notify=false 避免重复触发服务器同步（统一在 onHistoryAdded 中处理）
+    // 使用 notify=false 避免在 serverItemId 更新前触发服务器同步（统一在 _pushToServer 完成后的 onHistoryAdded 中处理）
     switch (contentType) {
       case HistoryContentType.text:
         var rules = jsonDecode(appConfig.tagRules)["data"];
@@ -652,17 +652,17 @@ class HistoryController extends GetxController with WidgetsBindingObserver imple
           if (history.content.matchRegExp(rule["rule"])) {
             //添加标签
             var tag = HistoryTag(rule["name"], history.id);
-            tagService.add(tag, shouldSync);
+            tagService.add(tag, false);
           }
         }
         break;
       case HistoryContentType.sms:
         //添加标签
-        tagService.add(HistoryTag(TranslationKey.sms.tr, history.id), shouldSync);
+        tagService.add(HistoryTag(TranslationKey.sms.tr, history.id), false);
         break;
       case HistoryContentType.notification:
         //添加通知标签
-        tagService.add(HistoryTag(TranslationKey.notification.tr, history.id), shouldSync);
+        tagService.add(HistoryTag(TranslationKey.notification.tr, history.id), false);
         break;
       default:
     }
@@ -747,13 +747,7 @@ class HistoryController extends GetxController with WidgetsBindingObserver imple
     //endregion
 
     // 标签添加完成后再推送到服务器（仅当 shouldSync=true 时）
-    _pushToServer(history, contentType);
-
-    // 新的队列同步：添加到操作队列
-    if (shouldSync) {
-      final tags = tagService.getTagList(history.id).toList();
-      historyServerSyncIntegration.onHistoryAdded(history, tags);
-    }
+    await _pushToServer(history, contentType, shouldSync);
 
     return cnt;
   }
@@ -796,10 +790,10 @@ class HistoryController extends GetxController with WidgetsBindingObserver imple
       }
     }
     final contentType = HistoryContentType.parse(history.type);
-    _pushToServer(history, contentType);
+    await _pushToServer(history, contentType, false);
   }
 
-  void _pushToServer(History history, HistoryContentType contentType) {
+  Future<void> _pushToServer(History history, HistoryContentType contentType, bool shouldSync) async {
     if (!Get.isRegistered<ServerSyncService>()) {
       Log.warn(tag, "_pushToServer: ServerSyncService 未注册");
       return;
@@ -814,8 +808,10 @@ class HistoryController extends GetxController with WidgetsBindingObserver imple
       Log.info(tag, "_pushToServer: 标签详情: ${tags.map((t) => "'$t'").join(', ')}");
     }
     Log.info(tag, "_pushToServer: 准备推送 ${contentType.name} 到服务器, historyId=${history.id}, tagCount=${tags.length}");
-    if (contentType == HistoryContentType.image) {
-      serverSync.pushImage(history.content, tags).then((data) {
+
+    try {
+      if (contentType == HistoryContentType.image) {
+        final data = await serverSync.pushImage(history.content, tags);
         if (data == null) {
           Log.warn(tag, "_pushToServer: pushImage 返回 null（可能未启用或失败）");
           return;
@@ -830,22 +826,32 @@ class HistoryController extends GetxController with WidgetsBindingObserver imple
             expireAtStr = DateTime.fromMillisecondsSinceEpoch(ts * 1000).toIso8601String();
           }
         }
-        dbService.historyDao.updateServerFields(history.id, serverItemId, expireAtStr).then((_) {
-          history.serverItemId = serverItemId;
-          history.serverExpireAt = expireAtStr;
-          debounceUpdate();
-        });
-      }).catchError((e) { Log.error(tag, "pushImage to server error: $e"); });
-    } else if (contentType == HistoryContentType.text) {
-      serverSync.pushText(history, tags).then((serverItemId) {
+        await dbService.historyDao.updateServerFields(history.id, serverItemId, expireAtStr);
+        history.serverItemId = serverItemId;
+        history.serverExpireAt = expireAtStr;
+        debounceUpdate();
+
+        // 新的队列同步：添加到操作队列（在serverItemId更新后）
+        if (shouldSync && serverItemId != null) {
+          historyServerSyncIntegration.onHistoryAdded(history, tags);
+        }
+      } else if (contentType == HistoryContentType.text) {
+        final serverItemId = await serverSync.pushText(history, tags);
         if (serverItemId == null) {
           Log.warn(tag, "_pushToServer: pushText 返回 null（可能未启用或失败）");
           return;
         }
         Log.info(tag, "_pushToServer: pushText 成功，serverItemId=$serverItemId");
-        dbService.historyDao.updateServerFields(history.id, serverItemId, null);
+        await dbService.historyDao.updateServerFields(history.id, serverItemId, null);
         history.serverItemId = serverItemId;
-      }).catchError((e) { Log.error(tag, "pushText to server error: $e"); });
+
+        // 新的队列同步：添加到操作队列（在serverItemId更新后）
+        if (shouldSync) {
+          historyServerSyncIntegration.onHistoryAdded(history, tags);
+        }
+      }
+    } catch (e, stack) {
+      Log.error(tag, "_pushToServer: 推送失败 $e", stack);
     }
   }
 
