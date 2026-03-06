@@ -25,15 +25,21 @@ class ServerSyncService extends GetxService {
   // 上次拉取时间（从 config 持久化读取）
   DateTime get _lastPullTime {
     final timestamp = appConfig.lastServerPullTime;
+    Log.info(tag, "_lastPullTime getter: 从配置读取 timestamp=$timestamp");
     if (timestamp == null || timestamp == 0) {
+      Log.info(tag, "_lastPullTime getter: 返回初始时间 (epoch 0)");
       return DateTime.fromMillisecondsSinceEpoch(0);
     }
-    return DateTime.fromMillisecondsSinceEpoch(timestamp);
+    final result = DateTime.fromMillisecondsSinceEpoch(timestamp);
+    Log.info(tag, "_lastPullTime getter: 返回时间 ${result.toLocal()} ($timestamp)");
+    return result;
   }
 
   // 设置上次拉取时间（持久化到 config）
   void _setLastPullTime(DateTime time) {
+    Log.info(tag, "_setLastPullTime: 保存拉取时间 ${time.toLocal()} (${time.millisecondsSinceEpoch})");
     appConfig.setLastServerPullTime(time.millisecondsSinceEpoch);
+    Log.info(tag, "_setLastPullTime: 验证保存结果 ${appConfig.lastServerPullTime}");
   }
 
   /// 重置拉取时间，用于强制拉取所有记录
@@ -71,15 +77,18 @@ class ServerSyncService extends GetxService {
       return null;
     }
     try {
+      Log.info(tag, "pushText: 开始推送文本, historyId=${history.id}, tags=$tags, tagCount=${tags.length}");
       final encrypted = _encrypt(history.content);
+      final tagsStr = tags.join(',');
+      Log.info(tag, "pushText: 标签字符串='$tagsStr'");
       final body = jsonEncode({
         "groupId": _groupId,
         "devId": appConfig.device.guid,
         "content": encrypted,
-        "tags": tags.join(','), // 标签以逗号分隔
+        "tags": tagsStr, // 标签以逗号分隔
       });
       final uri = Uri.parse("$_apiBase/push/text");
-      Log.info(tag, "pushText: 请求 $uri, groupId=$_groupId, devId=${appConfig.device.guid}, tags=$tags");
+      Log.info(tag, "pushText: 请求 $uri, groupId=$_groupId, devId=${appConfig.device.guid}, body长度=${body.length}");
       final resp = await http
           .post(
             uri,
@@ -111,6 +120,7 @@ class ServerSyncService extends GetxService {
       return null;
     }
     try {
+      Log.info(tag, "pushImage: 开始推送图片, imagePath=$imagePath, tags=$tags, tagCount=${tags.length}");
       final file = File(imagePath);
       if (!file.existsSync()) {
         Log.warn(tag, "pushImage: 文件不存在 $imagePath");
@@ -123,12 +133,14 @@ class ServerSyncService extends GetxService {
       final encBytes = _encryptBytes(rawBytes);
       Log.info(tag, "pushImage: 加密后 ${encBytes.length} 字节");
 
+      final tagsStr = tags.join(',');
+      Log.info(tag, "pushImage: 标签字符串='$tagsStr'");
       final uri = Uri.parse("$_apiBase/push/image");
-      Log.info(tag, "pushImage: 请求 $uri, tags=$tags");
+      Log.info(tag, "pushImage: 请求 $uri, groupId=$_groupId, devId=${appConfig.device.guid}");
       final request = http.MultipartRequest("POST", uri)
         ..fields["groupId"] = _groupId
         ..fields["devId"] = appConfig.device.guid
-        ..fields["tags"] = tags.join(',') // 标签以逗号分隔
+        ..fields["tags"] = tagsStr // 标签以逗号分隔
         ..files.add(
           http.MultipartFile.fromBytes("data", encBytes, filename: "image.bin"),
         );
@@ -158,6 +170,7 @@ class ServerSyncService extends GetxService {
     }
     try {
       final since = _lastPullTime.toUtc().toIso8601String();
+      Log.info(tag, "pullNewItems: _lastPullTime=${_lastPullTime.toLocal()}, since=$since");
       final uri = Uri.parse("$_apiBase/pull").replace(
         queryParameters: {"groupId": _groupId, "since": since},
       );

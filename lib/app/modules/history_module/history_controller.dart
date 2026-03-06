@@ -778,9 +778,15 @@ class HistoryController extends GetxController with WidgetsBindingObserver imple
       return;
     }
     final serverSync = Get.find<ServerSyncService>();
-    final tagService = Get.find<TagService>();
+    Log.info(tag, "_pushToServer: 开始处理, historyId=${history.id}, contentType=${contentType.name}");
     final tags = tagService.getTagList(history.id).toList();
-    Log.info(tag, "_pushToServer: 准备推送 ${contentType.name} 到服务器, tags=$tags");
+    Log.info(tag, "_pushToServer: 从 TagService 获取标签, historyId=${history.id}, tags=$tags, tagCount=${tags.length}");
+    if (tags.isEmpty) {
+      Log.info(tag, "_pushToServer: 警告 - 该条目没有标签");
+    } else {
+      Log.info(tag, "_pushToServer: 标签详情: ${tags.map((t) => "'$t'").join(', ')}");
+    }
+    Log.info(tag, "_pushToServer: 准备推送 ${contentType.name} 到服务器, historyId=${history.id}, tagCount=${tags.length}");
     if (contentType == HistoryContentType.image) {
       serverSync.pushImage(history.content, tags).then((data) {
         if (data == null) {
