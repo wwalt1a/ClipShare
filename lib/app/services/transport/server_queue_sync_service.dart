@@ -65,14 +65,20 @@ class ServerQueueSyncService extends GetxService {
           itemType = 'image';
         }
 
+        final serverItemId = history.serverItemId ?? history.id.toString();
+
         items.add({
-          'itemId': history.serverItemId ?? history.id.toString(),
+          'itemId': serverItemId,
           'type': itemType,
           'content': encryptedContent,
           'fileId': itemType == 'image' ? history.content : null,
           'tags': encryptedTags,
           'createdAt': history.time,
         });
+
+        if (history.serverItemId == null) {
+          await dbService.historyDao.updateServerFields(history.id, serverItemId, null);
+        }
       }
 
       final uri = Uri.parse('$_apiBase/api/sync/init');

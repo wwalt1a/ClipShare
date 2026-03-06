@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:clipshare/app/data/enums/module.dart';
 import 'package:clipshare/app/data/enums/op_method.dart';
 import 'package:clipshare/app/data/repository/entity/tables/history_tag.dart';
@@ -7,10 +8,18 @@ import 'package:clipshare/app/services/transport/history_server_sync_integration
 import 'package:clipshare/app/utils/constants.dart';
 import 'package:get/get.dart';
 
+import 'package:clipshare/app/data/enums/msg_type.dart';
+import 'package:clipshare/app/data/models/message_data.dart';
+import 'package:clipshare/app/data/repository/entity/tables/device.dart';
+import 'package:clipshare/app/data/repository/entity/tables/operation_sync.dart';
+import 'package:clipshare/app/handlers/sync/abstract_data_sender.dart';
+import 'package:clipshare/app/listeners/sync_listener.dart';
+import 'package:clipshare/app/services/config_service.dart';
 import '../listeners/tag_changed_listener.dart';
 
-class TagService extends GetxService {
+class TagService extends GetxService implements SyncListener {
   final _dbService = Get.find<DbService>();
+  final _appConfig = Get.find<ConfigService>();
   late final HistoryServerSyncIntegration _serverSyncIntegration;
   final _tags = <int, Set<String>>{}.obs;
   final _tagNameCntMap = <String, int>{};
@@ -34,8 +43,10 @@ class TagService extends GetxService {
         _tagNameCntMap[tag.tagName] = 1;
       }
     }
+    DataSender.addSyncListener(Module.tag, this);
     return this;
   }
+
 
   Set<String> getTagList(int hisId) {
     if (_tags.containsKey(hisId)) {
@@ -170,5 +181,65 @@ class TagService extends GetxService {
 
   void removeListener(TagChangedListener listener) {
     _listeners.remove(listener);
+  }
+
+  @override
+  Future ackSync(MessageData msg) async {
+    var send = msg.send;
+    var data = msg.data;
+    var opSync = OperationSync(
+      opId: data["id"],
+      devId: send.guid,
+      uid: _appConfig.userId,
+    );
+    await _dbService.opSyncDao.add(opSync);
+  }
+
+  @override
+  Future<void> onSync(MessageData msg) async {
+    var sender = msg.send;
+    final data = msg.data["data"];
+    Map<dynamic, dynamic> tagMap = data is String ? jsonDecode(data) : data;
+    
+    var opRecord = OperationRecord.fromJson(msg.data);
+    var historyTag = HistoryTag.fromJson(tagMap.cast<String, dynamic>());
+    
+    if (opRecord.method == OpMethod.add || opRecord.method == OpMethod.update) {
+      await _add(historyTag, false);
+    } else if (opRecord.method == OpMethod.delete) {
+      await _remove(historyTag, false);
+    }
+    
+    //Add to local op records
+    await _dbService.opRecordDao.add(opRecord.copyWith(data: historyTag.id.toString()));
+    
+    //Send ACK
+    await sender.sendData(MsgType.ackSync, {
+      "id": opRecord.id,
+      "hisId": historyTag.id,
+      "module": Module.tag.moduleName,
+    });
+  }
+
+  @override
+  Future<void> onStorageSync(Map<String, dynamic> map, Device sender, bool loadingMissingData) async {
+    final data = map["data"];
+    Map<dynamic, dynamic> tagMap = data is String ? jsonDecode(data) : data;
+    
+    var opRecord = OperationRecord.fromJson(map);
+    var historyTag = HistoryTag.fromJson(tagMap.cast<String, dynamic>());
+    
+    if (opRecord.method == OpMethod.add || opRecord.method == OpMethod.update) {
+      await _add(historyTag, false);
+    } else if (opRecord.method == OpMethod.delete) {
+      await _remove(historyTag, false);
+    }
+    
+    await _dbService.opRecordDao.add(
+      opRecord.copyWith(
+        data: historyTag.id.toString(),
+        storageSync: true,
+      ),
+    );
   }
 }

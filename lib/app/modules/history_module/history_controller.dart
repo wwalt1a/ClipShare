@@ -588,7 +588,9 @@ class HistoryController extends GetxController with WidgetsBindingObserver imple
     if (cnt <= 0) return;
     notifyHistoryWindow();
     //将同步过来的数据添加到本地操作记录
-    dbService.opRecordDao.add(opRecord.copyWith(data: history.id.toString()));
+    if (cnt == history.id || opRecord.method != OpMethod.add) {
+      dbService.opRecordDao.add(opRecord.copyWith(data: history.id.toString()));
+    }
     //发送同步确认
     await sender.sendData(MsgType.ackSync, {
       "id": opRecord.id,
@@ -621,12 +623,14 @@ class HistoryController extends GetxController with WidgetsBindingObserver imple
     if (cnt <= 0) return;
     notifyHistoryWindow();
     //将同步过来的数据添加到本地操作记录
-    await dbService.opRecordDao.add(
-      opRecord.copyWith(
-        data: history.id.toString(),
-        storageSync: true,
-      ),
-    );
+    if (cnt == history.id || opRecord.method != OpMethod.add) {
+      await dbService.opRecordDao.add(
+        opRecord.copyWith(
+          data: history.id.toString(),
+          storageSync: true,
+        ),
+      );
+    }
   }
 
   ///添加页面和数据库数据
@@ -642,7 +646,7 @@ class HistoryController extends GetxController with WidgetsBindingObserver imple
       final existing = await dbService.historyDao.getByServerItemId(history.serverItemId!);
       if (existing != null) {
         Log.info(tag, "addData: 记录已存在，跳过 serverItemId=${history.serverItemId}, existingId=${existing.id}");
-        return 0;
+        return existing.id;
       }
     }
     var cnt = await dbService.historyDao.add(clip.data);
