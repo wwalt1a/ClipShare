@@ -1,7 +1,9 @@
 import 'package:clipshare/app/data/repository/entity/tables/history.dart';
+import 'package:clipshare/app/data/repository/entity/tables/history_tag.dart';
 import 'package:clipshare/app/data/repository/entity/tables/server_operation_queue.dart';
 import 'package:clipshare/app/services/config_service.dart';
 import 'package:clipshare/app/services/db_service.dart';
+import 'package:clipshare/app/services/tag_service.dart';
 import 'package:clipshare/app/services/transport/server_queue_sync_service.dart';
 import 'package:clipshare/app/services/transport/server_sync_service.dart';
 import 'package:clipshare/app/utils/log.dart';
@@ -16,6 +18,15 @@ class HistoryServerSyncIntegration extends GetxService {
   final dbService = Get.find<DbService>();
   final serverSyncService = Get.find<ServerSyncService>();
   final queueSyncService = Get.find<ServerQueueSyncService>();
+  late final TagService tagService;
+
+  @override
+  void onInit() {
+    super.onInit();
+    if (Get.isRegistered<TagService>()) {
+      tagService = Get.find<TagService>();
+    }
+  }
 
   bool get _isEnabled =>
       appConfig.forwardServer != null && appConfig.hasSyncPassword;
@@ -161,8 +172,8 @@ class HistoryServerSyncIntegration extends GetxService {
       final operations = await queueSyncService.pullOperations(lastPullTime);
 
       if (operations.isNotEmpty) {
-        Log.info(tag, "periodicSync: 拉取到 ${operations.length} 条操作，需要应用到本地");
-        // TODO: 应用操作到本地数据库
+        Log.info(tag, "periodicSync: 拉取到 ${operations.length} 条操作，应用到本地");
+        await _applyOperations(operations);
       }
 
       // 更新拉取时间
@@ -175,5 +186,135 @@ class HistoryServerSyncIntegration extends GetxService {
     } catch (err, stack) {
       Log.error(tag, "periodicSync: 异常", err, stack);
     }
+  }
+
+  /// 应用操作到本地数据库
+  Future<void> _applyOperations(List<Map<String, dynamic>> operations) async {
+    for (final op in operations) {
+      try {
+        final type = op['type'] as String;
+        final serverItemId = op['itemId'] as String;
+
+        Log.info(tag, "_applyOperations: 处理操作 type=$type, serverItemId=$serverItemId");
+
+        switch (type) {
+          case 'addItem':
+            await _applyAddItem(op);
+            break;
+          case 'deleteItem':
+            await _applyDeleteItem(serverItemId);
+            break;
+          case 'addTag':
+            await _applyAddTag(serverItemId, op['tagName'] as String);
+            break;
+          case 'removeTag':
+            await _applyRemoveTag(serverItemId, op['tagName'] as String);
+            break;
+          default:
+            Log.warn(tag, "_applyOperations: 未知操作类型 $type");
+        }
+      } catch (err, stack) {
+        Log.error(tag, "_applyOperations: 应用操作失败", err, stack);
+      }
+    }
+  }
+
+  /// 应用添加记录操作
+  Future<void> _applyAddItem(Map<String, dynamic> op) async {
+    final serverItemId = op['itemId'] as String;
+    final encryptedContent = op['content'] as String?;
+    final fileId = op['fileId'] as String?;
+    final itemType = op['itemType'] as String;
+    final createdAtStr = op['createdAt'] as String;
+
+    // 检查是否已存在
+    final existing = await dbService.historyDao.getByServerItemId(serverItemId);
+    if (existing != null) {
+      Log.info(tag, "_applyAddItem: 记录已存在，跳过 serverItemId=$serverItemId");
+      return;
+    }
+
+    // 解密内容
+    String content;
+    if (itemType == 'text') {
+      if (encryptedContent == null) {
+        Log.warn(tag, "_applyAddItem: 文本记录缺少内容");
+        return;
+      }
+      content = serverSyncService.decrypt(encryptedContent);
+    } else {
+      // 图片类型，content是fileId
+      content = fileId ?? '';
+    }
+
+    final createdAt = DateTime.parse(createdAtStr);
+
+    // 创建历史记录
+    final history = History(
+      content: content,
+      type: itemType,
+      time: createdAt,
+      devId: appConfig.device.guid,
+      serverItemId: serverItemId,
+      fileId: fileId,
+    );
+
+    // 添加到数据库（不触发同步）
+    final historyId = await dbService.historyDao.add(history);
+    if (historyId > 0) {
+      Log.info(tag, "_applyAddItem: 添加记录成功 historyId=$historyId, serverItemId=$serverItemId");
+    }
+  }
+
+  /// 应用删除记录操作
+  Future<void> _applyDeleteItem(String serverItemId) async {
+    final history = await dbService.historyDao.getByServerItemId(serverItemId);
+    if (history == null) {
+      Log.info(tag, "_applyDeleteItem: 记录不存在，跳过 serverItemId=$serverItemId");
+      return;
+    }
+
+    await dbService.historyDao.deleteByCascade(history.id);
+    Log.info(tag, "_applyDeleteItem: 删除记录成功 historyId=${history.id}, serverItemId=$serverItemId");
+  }
+
+  /// 应用添加标签操作
+  Future<void> _applyAddTag(String serverItemId, String encryptedTagName) async {
+    final history = await dbService.historyDao.getByServerItemId(serverItemId);
+    if (history == null) {
+      Log.warn(tag, "_applyAddTag: 记录不存在 serverItemId=$serverItemId");
+      return;
+    }
+
+    // 解密标签名
+    final tagName = serverSyncService.decrypt(encryptedTagName);
+
+    // 添加标签（不触发同步）
+    final tag = HistoryTag(tagName, history.id);
+    await tagService.add(tag, false);
+    Log.info(tag, "_applyAddTag: 添加标签成功 historyId=${history.id}, tag=$tagName");
+  }
+
+  /// 应用移除标签操作
+  Future<void> _applyRemoveTag(String serverItemId, String encryptedTagName) async {
+    final history = await dbService.historyDao.getByServerItemId(serverItemId);
+    if (history == null) {
+      Log.warn(tag, "_applyRemoveTag: 记录不存在 serverItemId=$serverItemId");
+      return;
+    }
+
+    // 解密标签名
+    final tagName = serverSyncService.decrypt(encryptedTagName);
+
+    // 查找标签
+    final existingTag = await dbService.historyTagDao.getByHistoryIdAndName(history.id, tagName);
+    if (existingTag == null) {
+      Log.info(tag, "_applyRemoveTag: 标签不存在，跳过 historyId=${history.id}, tag=$tagName");
+      return;
+    }
+
+    // 移除标签（不触发同步）
+    await tagService.remove(existingTag, false);
+    Log.info(tag, "_applyRemoveTag: 移除标签成功 historyId=${history.id}, tag=$tagName");
   }
 }

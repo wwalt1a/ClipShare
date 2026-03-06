@@ -83,6 +83,10 @@ abstract class HistoryTagDao {
   @Query("select * from HistoryTag where hisId = :hId and tagName = :tagName ")
   Future<HistoryTag?> get(int hId, String tagName);
 
+  ///根据历史ID和标签名获取标签
+  @Query("select * from HistoryTag where hisId = :hId and tagName = :tagName limit 1")
+  Future<HistoryTag?> getByHistoryIdAndName(int hId, String tagName);
+
   ///获取标签
   @Query("select * from HistoryTag where id = :id")
   Future<HistoryTag?> getById(int id);

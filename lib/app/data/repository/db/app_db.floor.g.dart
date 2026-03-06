@@ -421,6 +421,27 @@ class _$HistoryDao extends HistoryDao {
   }
 
   @override
+  Future<History?> getByServerItemId(String serverItemId) async {
+    return _queryAdapter.query(
+        'select * from history where serverItemId = ?1 limit 1',
+        mapper: (Map<String, Object?> row) => History(
+            id: row['id'] as int,
+            uid: row['uid'] as int,
+            time: row['time'] as String,
+            content: row['content'] as String,
+            type: row['type'] as String,
+            devId: row['devId'] as String,
+            size: row['size'] as int,
+            top: (row['top'] as int) != 0,
+            sync: (row['sync'] as int) != 0,
+            updateTime: row['updateTime'] as String?,
+            source: row['source'] as String?,
+            serverExpireAt: row['serverExpireAt'] as String?,
+            serverItemId: row['serverItemId'] as String?),
+        arguments: [serverItemId]);
+  }
+
+  @override
   Future<List<History>> getHistoriesPageByWhere(
     int uid,
     int fromId,
@@ -1153,6 +1174,18 @@ class _$HistoryTagDao extends HistoryTagDao {
   ) async {
     return _queryAdapter.query(
         'select * from HistoryTag where hisId = ?1 and tagName = ?2',
+        mapper: (Map<String, Object?> row) => HistoryTag(
+            row['tagName'] as String, row['hisId'] as int, row['id'] as int?),
+        arguments: [hId, tagName]);
+  }
+
+  @override
+  Future<HistoryTag?> getByHistoryIdAndName(
+    int hId,
+    String tagName,
+  ) async {
+    return _queryAdapter.query(
+        'select * from HistoryTag where hisId = ?1 and tagName = ?2 limit 1',
         mapper: (Map<String, Object?> row) => HistoryTag(
             row['tagName'] as String, row['hisId'] as int, row['id'] as int?),
         arguments: [hId, tagName]);

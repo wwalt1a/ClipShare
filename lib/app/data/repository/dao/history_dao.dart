@@ -22,6 +22,10 @@ abstract class HistoryDao {
   @Query("select * from history where uid = :uid order by id desc limit 1")
   Future<History?> getLatestLocalClip(int uid);
 
+  /// 根据 serverItemId 查询记录
+  @Query("select * from history where serverItemId = :serverItemId limit 1")
+  Future<History?> getByServerItemId(String serverItemId);
+
   /// 根据条件查询，一次查 100 条，置顶优先，id 降序
   @Query("""
   SELECT * FROM History
