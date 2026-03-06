@@ -8,6 +8,7 @@ import 'package:clipshare/app/data/repository/dao/history_dao.dart';
 import 'package:clipshare/app/data/repository/dao/history_tag_dao.dart';
 import 'package:clipshare/app/data/repository/dao/operation_record_dao.dart';
 import 'package:clipshare/app/data/repository/dao/operation_sync_dao.dart';
+import 'package:clipshare/app/data/repository/dao/server_operation_queue_dao.dart';
 import 'package:clipshare/app/data/repository/dao/user_dao.dart';
 import 'package:clipshare/app/data/repository/entity/tables/app_info.dart';
 import 'package:clipshare/app/data/repository/entity/tables/config.dart';
@@ -16,6 +17,7 @@ import 'package:clipshare/app/data/repository/entity/tables/history.dart';
 import 'package:clipshare/app/data/repository/entity/tables/history_tag.dart';
 import 'package:clipshare/app/data/repository/entity/tables/operation_record.dart';
 import 'package:clipshare/app/data/repository/entity/tables/operation_sync.dart';
+import 'package:clipshare/app/data/repository/entity/tables/server_operation_queue.dart';
 import 'package:clipshare/app/data/repository/entity/tables/user.dart';
 import 'package:clipshare/app/data/repository/entity/views/v_history_tag_hold.dart';
 import 'package:clipshare/app/utils/constants.dart';
@@ -41,6 +43,7 @@ const tables = [
   HistoryTag,
   OperationRecord,
   AppInfo,
+  ServerOperationQueue,
 ];
 const views = [VHistoryTagHold];
 
@@ -54,7 +57,7 @@ const views = [VHistoryTagHold];
 ///
 /// 2. 直接执行 /scripts/db_gen.bat 一键完成
 @Database(
-  version: 9,
+  version: 10,
   entities: tables,
   views: views,
 )
@@ -74,6 +77,8 @@ abstract class _AppDb extends FloorDatabase {
   OperationRecordDao get operationRecordDao;
 
   AppInfoDao get appInfoDao;
+
+  ServerOperationQueueDao get serverOperationQueueDao;
 }
 
 class DbService extends GetxService {
@@ -95,6 +100,8 @@ class DbService extends GetxService {
   OperationRecordDao get opRecordDao => _db.operationRecordDao;
 
   AppInfoDao get appInfoDao => _db.appInfoDao;
+
+  ServerOperationQueueDao get serverOpQueueDao => _db.serverOperationQueueDao;
 
   final tag = "DbService";
 
@@ -129,6 +136,7 @@ class DbService extends GetxService {
       migration6to7,
       migration7to8,
       migration8to9,
+      migration9to10,
     ]).build();
     version = await _db.database.database.getVersion();
     return this;
@@ -247,5 +255,27 @@ class DbService extends GetxService {
     if (!await hasColumnInTable(database, 'History', 'serverItemId')) {
       await database.execute('ALTER TABLE History ADD COLUMN serverItemId TEXT');
     }
+  });
+
+  ///数据库版本 9 -> 10
+  ///新增 ServerOperationQueue 表，用于服务器同步操作队列
+  final migration9to10 = Migration(9, 10, (database) async {
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS ServerOperationQueue (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        type TEXT NOT NULL,
+        itemId INTEGER NOT NULL,
+        serverItemId TEXT,
+        tagName TEXT,
+        content TEXT,
+        fileId TEXT,
+        itemType TEXT,
+        createdAt INTEGER NOT NULL,
+        synced INTEGER NOT NULL DEFAULT 0,
+        invalid INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await database.execute('CREATE INDEX IF NOT EXISTS index_ServerOperationQueue_synced ON ServerOperationQueue (synced)');
+    await database.execute('CREATE INDEX IF NOT EXISTS index_ServerOperationQueue_itemId ON ServerOperationQueue (itemId)');
   });
 }
