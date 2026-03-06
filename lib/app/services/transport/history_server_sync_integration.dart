@@ -162,14 +162,28 @@ class HistoryServerSyncIntegration extends GetxService {
     try {
       Log.info(tag, "periodicSync: 开始定期同步");
 
+      // 检查是否需要首次全量同步
+      final lastPullTime = appConfig.lastServerPullTime ?? 0;
+      if (lastPullTime == 0) {
+        Log.info(tag, "periodicSync: 检测到首次同步，执行全量同步");
+        final success = await queueSyncService.initSync();
+        if (success) {
+          Log.info(tag, "periodicSync: 首次全量同步成功");
+          await appConfig.setLastServerPullTime(DateTime.now().millisecondsSinceEpoch);
+        } else {
+          Log.error(tag, "periodicSync: 首次全量同步失败");
+          return;
+        }
+      }
+
       // 推送队列
       await queueSyncService.pushQueue();
 
       // 拉取操作日志
-      final lastPullTime = DateTime.fromMillisecondsSinceEpoch(
+      final pullTime = DateTime.fromMillisecondsSinceEpoch(
         appConfig.lastServerPullTime ?? 0,
       );
-      final operations = await queueSyncService.pullOperations(lastPullTime);
+      final operations = await queueSyncService.pullOperations(pullTime);
 
       if (operations.isNotEmpty) {
         Log.info(tag, "periodicSync: 拉取到 ${operations.length} 条操作，应用到本地");
