@@ -776,7 +776,16 @@ class HistoryController extends GetxController with WidgetsBindingObserver imple
 
   ///推送本机内容到中转服务器（异步，不阻塞主流程）
   /// 推送历史记录到服务器（公开方法，供外部调用）
-  void pushHistoryToServer(History history) {
+  void pushHistoryToServer(History history) async {
+    // 如果已经推送过，先删除旧记录
+    if (history.serverItemId != null && history.serverItemId!.isNotEmpty) {
+      Log.info(tag, "pushHistoryToServer: 检测到已有 serverItemId=${history.serverItemId}，先删除旧记录");
+      if (Get.isRegistered<ServerSyncService>()) {
+        final serverSync = Get.find<ServerSyncService>();
+        await serverSync.deleteItems([history.serverItemId!]);
+        Log.info(tag, "pushHistoryToServer: 已删除旧记录");
+      }
+    }
     final contentType = HistoryContentType.parse(history.type);
     _pushToServer(history, contentType);
   }
