@@ -640,9 +640,6 @@ class HistoryController extends GetxController with WidgetsBindingObserver imple
     notifyHistoryWindow();
     _tempList.add(clip);
     debounceUpdate();
-    if (shouldSync) {
-      _pushToServer(history, contentType);
-    }
     if (!shouldSync) {
       final source = history.source;
       final appInfo = sourceService.getAppInfoByAppId(source);
@@ -743,6 +740,12 @@ class HistoryController extends GetxController with WidgetsBindingObserver imple
         break;
       default:
     }
+
+    // 标签添加完成后再推送到服务器
+    if (shouldSync) {
+      _pushToServer(history, contentType);
+    }
+
     return cnt;
   }
 
