@@ -132,7 +132,7 @@ class ServerQueueSyncService extends GetxService {
 
         final ops = <Map<String, dynamic>>[];
         for (final op in operations) {
-          ops.add({
+          final opMap = {
             'type': op.type,
             'itemId': op.serverItemId ?? op.itemId.toString(),
             'content': op.content,
@@ -140,7 +140,11 @@ class ServerQueueSyncService extends GetxService {
             'itemType': op.itemType,
             'tagName': op.tagName,
             'createdAt': op.createdAtDateTime.toUtc().toIso8601String(),
-          });
+          };
+          ops.add(opMap);
+
+          // 详细日志：输出每个操作的完整信息
+          Log.info(tag, "pushQueue: 操作 ${ops.length}: type=${op.type}, itemId=${op.serverItemId ?? op.itemId}, itemType=${op.itemType}, fileId=${op.fileId}, tagName=${op.tagName}, content长度=${op.content?.length ?? 0}");
         }
 
         final uri = Uri.parse('$_apiBase/api/sync/push');

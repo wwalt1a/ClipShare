@@ -36,18 +36,24 @@ class HistoryServerSyncIntegration extends GetxService {
     if (!_isEnabled) return;
 
     try {
-      Log.info(tag, "onHistoryAdded: historyId=${history.id}");
+      Log.info(tag, "onHistoryAdded: historyId=${history.id}, type='${history.type}', contentLength=${history.content.length}");
 
       // 加密内容
       String? encryptedContent;
       String itemType;
 
-      if (history.type == 'text') {
+      // 规范化类型字符串，处理可能的空格和大小写问题
+      final normalizedType = history.type.trim().toLowerCase();
+
+      if (normalizedType == 'text') {
         encryptedContent = serverSyncService.encrypt(history.content);
         itemType = 'text';
-      } else {
+      } else if (normalizedType == 'image') {
         // 图片类型，content字段存储的是文件路径
         itemType = 'image';
+      } else {
+        Log.error(tag, "onHistoryAdded: 不支持的记录类型 type='${history.type}' (normalized='$normalizedType'), historyId=${history.id}");
+        return;
       }
 
       // 添加 addItem 操作
