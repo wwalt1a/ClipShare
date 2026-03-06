@@ -3,6 +3,7 @@ import 'package:clipshare/app/data/enums/op_method.dart';
 import 'package:clipshare/app/data/repository/entity/tables/history_tag.dart';
 import 'package:clipshare/app/data/repository/entity/tables/operation_record.dart';
 import 'package:clipshare/app/services/db_service.dart';
+import 'package:clipshare/app/services/transport/history_server_sync_integration.dart';
 import 'package:clipshare/app/utils/constants.dart';
 import 'package:get/get.dart';
 
@@ -10,11 +11,16 @@ import '../listeners/tag_changed_listener.dart';
 
 class TagService extends GetxService {
   final _dbService = Get.find<DbService>();
+  late final HistoryServerSyncIntegration _serverSyncIntegration;
   final _tags = <int, Set<String>>{}.obs;
   final _tagNameCntMap = <String, int>{};
   final _listeners = List<TagChangedListener>.empty(growable: true);
 
   Future<TagService> init() async {
+    // 延迟获取，因为可能还未注册
+    if (Get.isRegistered<HistoryServerSyncIntegration>()) {
+      _serverSyncIntegration = Get.find<HistoryServerSyncIntegration>();
+    }
     final lst = await _dbService.historyTagDao.getAll();
     for (var tag in lst) {
       if (_tags.containsKey(tag.hisId)) {
@@ -61,6 +67,14 @@ class TagService extends GetxService {
     } else {
       _tagNameCntMap[tag.tagName] = _tagNameCntMap[tag.tagName]! - 1;
     }
+
+    // 服务器同步集成：标签删除
+    if (notify && Get.isRegistered<HistoryServerSyncIntegration>()) {
+      final history = await _dbService.historyDao.getById(tag.hisId);
+      if (history != null) {
+        _serverSyncIntegration.onTagRemoved(tag.hisId, history.serverItemId, tag.tagName);
+      }
+    }
   }
 
   Future<bool> _add(HistoryTag tag, [bool notify = true]) async {
@@ -84,6 +98,14 @@ class TagService extends GetxService {
       } else {
         _tagNameCntMap[tag.tagName] = 1;
         _onChanged(tag.tagName, false);
+      }
+
+      // 服务器同步集成：标签添加
+      if (Get.isRegistered<HistoryServerSyncIntegration>()) {
+        final history = await _dbService.historyDao.getById(tag.hisId);
+        if (history != null) {
+          _serverSyncIntegration.onTagAdded(tag.hisId, history.serverItemId, tag.tagName);
+        }
       }
     }
     if (!notify || res) {

@@ -62,6 +62,7 @@ class HistoryController extends GetxController with WidgetsBindingObserver imple
   final clipChannelService = Get.find<ClipChannelService>();
   final sourceService = Get.find<ClipboardSourceService>();
   final tagService = Get.find<TagService>();
+  final historyServerSyncIntegration = Get.find<HistoryServerSyncIntegration>();
 
   //region 属性
   final String tag = "HistoryController";
@@ -745,6 +746,12 @@ class HistoryController extends GetxController with WidgetsBindingObserver imple
 
     // 标签添加完成后再推送到服务器（仅当 shouldSync=true 时）
     _pushToServer(history, contentType);
+
+    // 新的队列同步：添加到操作队列
+    if (shouldSync) {
+      final tags = tagService.getTagList(history.id).toList();
+      historyServerSyncIntegration.onHistoryAdded(history, tags);
+    }
 
     return cnt;
   }
