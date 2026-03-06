@@ -206,7 +206,7 @@ class HistoryServerSyncIntegration extends GetxService {
     for (final op in operations) {
       try {
         final type = op['type'] as String;
-        final serverItemId = op['itemId'] as String;
+        final serverItemId = op['serverItemId'] as String?;
 
         Log.info(tag, "_applyOperations: 处理操作 type=$type, serverItemId=$serverItemId");
 
@@ -215,13 +215,19 @@ class HistoryServerSyncIntegration extends GetxService {
             await _applyAddItem(op);
             break;
           case 'deleteItem':
-            await _applyDeleteItem(serverItemId);
+            if (serverItemId != null) {
+              await _applyDeleteItem(serverItemId);
+            }
             break;
           case 'addTag':
-            await _applyAddTag(serverItemId, op['tagName'] as String);
+            if (serverItemId != null) {
+              await _applyAddTag(serverItemId, op['tagName'] as String);
+            }
             break;
           case 'removeTag':
-            await _applyRemoveTag(serverItemId, op['tagName'] as String);
+            if (serverItemId != null) {
+              await _applyRemoveTag(serverItemId, op['tagName'] as String);
+            }
             break;
           default:
             Log.warn(tag, "_applyOperations: 未知操作类型 $type");
