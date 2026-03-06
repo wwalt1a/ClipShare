@@ -105,9 +105,9 @@ class TagService extends GetxService implements SyncListener {
 
     // 更新本地缓存
     if (_tags.containsKey(tag.hisId)) {
-      _tags[tag.hisId] = (_tags[tag.hisId]!..add(tag.tagName));
+      _tags[tag.hisId] = Set.from(_tags[tag.hisId]!)..add(tag.tagName);
     } else {
-      _tags[tag.hisId] = <String>{}..add(tag.tagName);
+      _tags[tag.hisId] = <String>{tag.tagName};
     }
 
     if (_tagNameCntMap.containsKey(tag.tagName)) {
