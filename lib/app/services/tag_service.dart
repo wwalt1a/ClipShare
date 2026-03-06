@@ -54,13 +54,17 @@ class TagService extends GetxService {
         _tags[tag.hisId] = Set.from(_tags[tag.hisId]!..remove(tag.tagName));
       }
     }
-    var opRecord = OperationRecord.fromSimple(
-      Module.tag,
-      OpMethod.delete,
-      tag.id.toString(),
-    );
-    //添加操作记录
-    _dbService.opRecordDao.addAndNotify(opRecord);
+
+    if (notify) {
+      var opRecord = OperationRecord.fromSimple(
+        Module.tag,
+        OpMethod.delete,
+        tag.id.toString(),
+      );
+      //添加操作记录
+      _dbService.opRecordDao.addAndNotify(opRecord);
+    }
+
     if (_tagNameCntMap[tag.tagName] == 1) {
       _tagNameCntMap.remove(tag.tagName);
       _onChanged(tag.tagName, true);
@@ -79,13 +83,30 @@ class TagService extends GetxService {
 
   Future<bool> _add(HistoryTag tag, [bool notify = true]) async {
     var hasTag = _tags.containsKey(tag.hisId) ? _tags[tag.hisId]!.contains(tag.tagName) : false;
-    var res = false;
     if (hasTag) return false;
+
+    // 添加到数据库
+    var res = await _dbService.historyTagDao.add(tag) > 0;
+    if (!res) {
+      return false;
+    }
+
+    // 更新本地缓存
+    if (_tags.containsKey(tag.hisId)) {
+      _tags[tag.hisId] = (_tags[tag.hisId]!..add(tag.tagName));
+    } else {
+      _tags[tag.hisId] = <String>{}..add(tag.tagName);
+    }
+
+    if (_tagNameCntMap.containsKey(tag.tagName)) {
+      _tagNameCntMap[tag.tagName] = _tagNameCntMap[tag.tagName]! + 1;
+    } else {
+      _tagNameCntMap[tag.tagName] = 1;
+      _onChanged(tag.tagName, false);
+    }
+
+    // 仅在 notify=true 时添加操作记录和触发服务器同步
     if (notify) {
-      res = await _dbService.historyTagDao.add(tag) > 0;
-      if (!res) {
-        return false;
-      }
       var opRecord = OperationRecord.fromSimple(
         Module.tag,
         OpMethod.add,
@@ -93,12 +114,6 @@ class TagService extends GetxService {
       );
       //添加操作记录
       _dbService.opRecordDao.addAndNotify(opRecord);
-      if (_tagNameCntMap.containsKey(tag.tagName)) {
-        _tagNameCntMap[tag.tagName] = _tagNameCntMap[tag.tagName]! + 1;
-      } else {
-        _tagNameCntMap[tag.tagName] = 1;
-        _onChanged(tag.tagName, false);
-      }
 
       // 服务器同步集成：标签添加
       if (Get.isRegistered<HistoryServerSyncIntegration>()) {
@@ -108,13 +123,7 @@ class TagService extends GetxService {
         }
       }
     }
-    if (!notify || res) {
-      if (_tags.containsKey(tag.hisId)) {
-        _tags[tag.hisId] = (_tags[tag.hisId]!..add(tag.tagName));
-      } else {
-        _tags[tag.hisId] = <String>{}..add(tag.tagName);
-      }
-    }
+
     return res;
   }
 
