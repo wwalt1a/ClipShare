@@ -15,6 +15,7 @@ import 'package:clipshare/app/data/repository/entity/tables/operation_sync.dart'
 import 'package:clipshare/app/handlers/sync/abstract_data_sender.dart';
 import 'package:clipshare/app/listeners/sync_listener.dart';
 import 'package:clipshare/app/services/config_service.dart';
+import 'package:clipshare/app/services/transport/socket_service.dart';
 import '../listeners/tag_changed_listener.dart';
 
 class TagService extends GetxService implements SyncListener {
@@ -214,7 +215,8 @@ class TagService extends GetxService implements SyncListener {
     await _dbService.opRecordDao.add(opRecord.copyWith(data: historyTag.id.toString()));
     
     //Send ACK
-    await sender.sendData(MsgType.ackSync, {
+    final socketService = Get.find<SocketService>();
+    socketService.sendData(sender, MsgType.ackSync, {
       "id": opRecord.id,
       "hisId": historyTag.id,
       "module": Module.tag.moduleName,
