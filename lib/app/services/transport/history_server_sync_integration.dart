@@ -2,6 +2,7 @@ import 'package:clipshare/app/data/repository/entity/tables/history.dart';
 import 'package:clipshare/app/data/repository/entity/tables/history_tag.dart';
 import 'package:clipshare/app/data/repository/entity/tables/server_operation_queue.dart';
 import 'package:clipshare/app/data/enums/history_content_type.dart';
+import 'package:clipshare/app/modules/history_module/history_controller.dart';
 import 'package:clipshare/app/services/config_service.dart';
 import 'package:clipshare/app/services/db_service.dart';
 import 'package:clipshare/app/services/tag_service.dart';
@@ -194,6 +195,14 @@ class HistoryServerSyncIntegration extends GetxService {
       if (operations.isNotEmpty) {
         Log.info(tag, "periodicSync: 拉取到 ${operations.length} 条操作，应用到本地");
         await _applyOperations(operations);
+        // 操作应用完成后刷新 UI
+        try {
+          if (Get.isRegistered<HistoryController>()) {
+            Get.find<HistoryController>().refreshData();
+          }
+        } catch (e) {
+          Log.warn(tag, "periodicSync: 刷新UI失败 $e");
+        }
       }
 
       // 更新拉取时间
@@ -309,6 +318,7 @@ class HistoryServerSyncIntegration extends GetxService {
       devId: appConfig.device.guid,
       size: content.length,
       serverItemId: serverItemId,
+      sync: true, // 来自服务器同步，标记为已同步，避免显示未同步图标
     );
 
     // 添加到数据库（不触发同步）
