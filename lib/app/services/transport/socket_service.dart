@@ -1659,8 +1659,16 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
       }
       Log.info(tag, "从服务器拉取到 ${items.length} 条记录");
       final historyController = Get.find<HistoryController>();
+      final dbService = Get.find<DbService>();
       for (final item in items) {
         try {
+          // 检查记录是否已存在
+          final existing = await dbService.historyDao.getByServerItemId(item.id);
+          if (existing != null) {
+            Log.info(tag, "记录已存在，跳过: serverItemId=${item.id}");
+            continue;
+          }
+
           String content;
           int size;
           if (item.isImage) {

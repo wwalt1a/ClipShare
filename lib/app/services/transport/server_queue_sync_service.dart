@@ -226,7 +226,12 @@ class ServerQueueSyncService extends GetxService {
         if (response.statusCode == 200) {
           final result = jsonDecode(response.body);
           if (result['code'] == 200 && result['data'] != null) {
-            final operations = (result['data']['operations'] as List)
+            final operationsData = result['data']['operations'];
+            if (operationsData == null) {
+              Log.info(tag, "pullOperations: 无新操作");
+              return [];
+            }
+            final operations = (operationsData as List)
                 .map((e) => e as Map<String, dynamic>)
                 .toList();
             Log.info(tag, "pullOperations: 拉取到 ${operations.length} 条操作");
