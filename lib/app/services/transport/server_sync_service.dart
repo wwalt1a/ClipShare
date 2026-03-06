@@ -69,6 +69,16 @@ class ServerSyncService extends GetxService {
     return _encrypter.decrypt64(base64Text, iv: _iv);
   }
 
+  /// 公开的加密方法（供其他服务使用）
+  String encrypt(String plainText) {
+    return _encrypt(plainText);
+  }
+
+  /// 公开的解密方法（供其他服务使用）
+  String decrypt(String base64Text) {
+    return _decrypt(base64Text);
+  }
+
   // ── 推送文本 ─────────────────────────────────────────────
 
   Future<String?> pushText(History history, List<String> tags) async {
