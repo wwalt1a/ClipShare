@@ -643,6 +643,7 @@ class HistoryController extends GetxController with WidgetsBindingObserver imple
     debounceUpdate();
 
     // 根据内容类型自动添加标签（对所有记录执行，无论是否同步）
+    // 使用 notify=false 避免重复触发服务器同步（统一在 onHistoryAdded 中处理）
     switch (contentType) {
       case HistoryContentType.text:
         var rules = jsonDecode(appConfig.tagRules)["data"];
@@ -650,17 +651,17 @@ class HistoryController extends GetxController with WidgetsBindingObserver imple
           if (history.content.matchRegExp(rule["rule"])) {
             //添加标签
             var tag = HistoryTag(rule["name"], history.id);
-            tagService.add(tag);
+            tagService.add(tag, shouldSync);
           }
         }
         break;
       case HistoryContentType.sms:
         //添加标签
-        tagService.add(HistoryTag(TranslationKey.sms.tr, history.id));
+        tagService.add(HistoryTag(TranslationKey.sms.tr, history.id), shouldSync);
         break;
       case HistoryContentType.notification:
         //添加通知标签
-        tagService.add(HistoryTag(TranslationKey.notification.tr, history.id));
+        tagService.add(HistoryTag(TranslationKey.notification.tr, history.id), shouldSync);
         break;
       default:
     }
