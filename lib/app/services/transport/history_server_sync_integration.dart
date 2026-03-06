@@ -254,35 +254,47 @@ class HistoryServerSyncIntegration extends GetxService {
 
   /// 应用添加记录操作
   Future<void> _applyAddItem(Map<String, dynamic> op) async {
+    Log.info(tag, "_applyAddItem: 开始处理 op=$op");
+
     final serverItemId = op['itemId'] as String;
     final encryptedContent = op['content'] as String?;
     final fileId = op['fileId'] as String?;
     final itemType = op['itemType'] as String;
     final createdAtStr = op['createdAt'] as String;
 
+    Log.info(tag, "_applyAddItem: 参数解析完成 serverItemId=$serverItemId, itemType=$itemType, fileId=$fileId, encryptedContent长度=${encryptedContent?.length ?? 0}");
+
     // 检查是否已存在
+    Log.info(tag, "_applyAddItem: 检查记录是否已存在 serverItemId=$serverItemId");
     final existing = await dbService.historyDao.getByServerItemId(serverItemId);
     if (existing != null) {
-      Log.info(tag, "_applyAddItem: 记录已存在，跳过 serverItemId=$serverItemId");
+      Log.info(tag, "_applyAddItem: 记录已存在，跳过 serverItemId=$serverItemId, existingHistoryId=${existing.id}");
       return;
     }
+    Log.info(tag, "_applyAddItem: 记录不存在，继续添加");
 
     // 解密内容
     String content;
+    Log.info(tag, "_applyAddItem: 开始处理内容 itemType=$itemType");
     if (itemType == 'text') {
       if (encryptedContent == null) {
-        Log.warn(tag, "_applyAddItem: 文本记录缺少内容");
+        Log.warn(tag, "_applyAddItem: 文本记录缺少内容 serverItemId=$serverItemId");
         return;
       }
+      Log.info(tag, "_applyAddItem: 开始解密文本内容");
       content = serverSyncService.decrypt(encryptedContent);
+      Log.info(tag, "_applyAddItem: 解密完成 content长度=${content.length}");
     } else {
       // 图片类型，content是fileId
+      Log.info(tag, "_applyAddItem: 图片类型，使用fileId作为content fileId=$fileId");
       content = fileId ?? '';
     }
 
+    Log.info(tag, "_applyAddItem: 解析创建时间 createdAtStr=$createdAtStr");
     final createdAt = DateTime.parse(createdAtStr);
 
     // 创建历史记录
+    Log.info(tag, "_applyAddItem: 创建History对象");
     final history = History(
       id: 0, // 自动生成
       uid: appConfig.userId,
@@ -295,9 +307,13 @@ class HistoryServerSyncIntegration extends GetxService {
     );
 
     // 添加到数据库（不触发同步）
+    Log.info(tag, "_applyAddItem: 准备添加到数据库");
     final historyId = await dbService.historyDao.add(history);
+    Log.info(tag, "_applyAddItem: 数据库添加完成 historyId=$historyId");
     if (historyId > 0) {
       Log.info(tag, "_applyAddItem: 添加记录成功 historyId=$historyId, serverItemId=$serverItemId");
+    } else {
+      Log.error(tag, "_applyAddItem: 添加记录失败 historyId=$historyId, serverItemId=$serverItemId");
     }
   }
 
