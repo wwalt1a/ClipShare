@@ -4,6 +4,7 @@ import 'package:clipshare/app/data/enums/op_method.dart';
 import 'package:clipshare/app/handlers/sync/abstract_data_sender.dart';
 import 'package:clipshare/app/handlers/sync/missing_data_sync_handler.dart';
 import 'package:clipshare/app/services/clipboard_source_service.dart';
+import 'package:clipshare/app/services/config_service.dart';
 import 'package:clipshare/app/services/db_service.dart';
 import 'package:clipshare/app/services/transport/socket_service.dart';
 import 'package:clipshare/app/services/transport/storage_service.dart';
@@ -26,9 +27,11 @@ abstract class OperationRecordDao {
   Future<int> addAndNotify(OperationRecord record) async {
     final cnt = await add(record);
     if (cnt == 0) return cnt;
-    //发送变更至已连接的所有设备
-    final result = await MissingDataSyncHandler.process(record);
-    await DataSender.sendData2All(MsgType.sync, result.result);
+    // 服务器专属模式下不走P2P广播
+    if (!Get.find<ConfigService>().isServerOnlyMode) {
+      final result = await MissingDataSyncHandler.process(record);
+      await DataSender.sendData2All(MsgType.sync, result.result);
+    }
     return cnt;
   }
 
@@ -129,6 +132,10 @@ abstract class OperationRecordDao {
   ///重新同步数据
   ///内容/标签/来源信息
   Future<void> resyncData(int historyId) async {
+    if (Get.find<ConfigService>().isServerOnlyMode) {
+      Log.debug(tag, "服务器专属模式，跳过P2P重新同步");
+      return;
+    }
     final history = await dbService.historyDao.getById(historyId);
     if (history == null) {
       Log.warn(tag, "History is null: $historyId");

@@ -36,7 +36,6 @@ import 'package:clipshare/app/services/clipboard_source_service.dart';
 import 'package:clipshare/app/services/config_service.dart';
 import 'package:clipshare/app/services/db_service.dart';
 import 'package:clipshare/app/services/transport/socket_service.dart';
-import 'package:clipshare/app/services/transport/server_sync_service.dart';
 import 'package:clipshare/app/services/transport/history_server_sync_integration.dart';
 import 'package:clipshare/app/services/tag_service.dart';
 import 'package:clipshare/app/utils/constants.dart';
@@ -758,8 +757,11 @@ class HistoryController extends GetxController with WidgetsBindingObserver imple
     }
     //endregion
 
-    // 标签添加完成后再推送到服务器（仅当 shouldSync=true 时）
-    await _pushToServer(history, contentType, shouldSync);
+    // 标签添加完成后推送到服务器（仅当 shouldSync=true 且是本机新增的记录）
+    if (shouldSync && history.devId == appConfig.device.guid) {
+      final tags = tagService.getTagList(history.id).toList();
+      historyServerSyncIntegration.onHistoryAdded(history, tags);
+    }
 
     return cnt;
   }
@@ -787,84 +789,6 @@ class HistoryController extends GetxController with WidgetsBindingObserver imple
   @override
   void onScreenClosed() {
     _screenUnlocked = false;
-  }
-
-  ///推送本机内容到中转服务器（异步，不阻塞主流程）
-  /// 推送历史记录到服务器（公开方法，供外部调用）
-  void pushHistoryToServer(History history) async {
-    // 如果已经推送过，先删除旧记录
-    if (history.serverItemId != null && history.serverItemId!.isNotEmpty) {
-      Log.info(tag, "pushHistoryToServer: 检测到已有 serverItemId=${history.serverItemId}，先删除旧记录");
-      if (Get.isRegistered<ServerSyncService>()) {
-        final serverSync = Get.find<ServerSyncService>();
-        await serverSync.deleteItems([history.serverItemId!]);
-        Log.info(tag, "pushHistoryToServer: 已删除旧记录");
-      }
-    }
-    final contentType = HistoryContentType.parse(history.type);
-    await _pushToServer(history, contentType, false);
-  }
-
-  Future<void> _pushToServer(History history, HistoryContentType contentType, bool shouldSync) async {
-    if (!Get.isRegistered<ServerSyncService>()) {
-      Log.warn(tag, "_pushToServer: ServerSyncService 未注册");
-      return;
-    }
-    final serverSync = Get.find<ServerSyncService>();
-    Log.info(tag, "_pushToServer: 开始处理, historyId=${history.id}, contentType=${contentType.name}");
-    final tags = tagService.getTagList(history.id).toList();
-    Log.info(tag, "_pushToServer: 从 TagService 获取标签, historyId=${history.id}, tags=$tags, tagCount=${tags.length}");
-    if (tags.isEmpty) {
-      Log.info(tag, "_pushToServer: 警告 - 该条目没有标签");
-    } else {
-      Log.info(tag, "_pushToServer: 标签详情: ${tags.map((t) => "'$t'").join(', ')}");
-    }
-    Log.info(tag, "_pushToServer: 准备推送 ${contentType.name} 到服务器, historyId=${history.id}, tagCount=${tags.length}");
-
-    try {
-      if (contentType == HistoryContentType.image) {
-        final data = await serverSync.pushImage(history.content, tags);
-        if (data == null) {
-          Log.warn(tag, "_pushToServer: pushImage 返回 null（可能未启用或失败）");
-          return;
-        }
-        Log.info(tag, "_pushToServer: pushImage 成功，serverItemId=${data["id"]}");
-        final serverItemId = data["id"] as String?;
-        final expireAtTs = data["expireAt"];
-        String? expireAtStr;
-        if (expireAtTs != null) {
-          final ts = expireAtTs is int ? expireAtTs : int.tryParse(expireAtTs.toString());
-          if (ts != null) {
-            expireAtStr = DateTime.fromMillisecondsSinceEpoch(ts * 1000).toIso8601String();
-          }
-        }
-        await dbService.historyDao.updateServerFields(history.id, serverItemId, expireAtStr);
-        history.serverItemId = serverItemId;
-        history.serverExpireAt = expireAtStr;
-        debounceUpdate();
-
-        // 新的队列同步：添加到操作队列（在serverItemId更新后）
-        if (shouldSync && serverItemId != null) {
-          historyServerSyncIntegration.onHistoryAdded(history, tags);
-        }
-      } else if (contentType == HistoryContentType.text) {
-        final serverItemId = await serverSync.pushText(history, tags);
-        if (serverItemId == null) {
-          Log.warn(tag, "_pushToServer: pushText 返回 null（可能未启用或失败）");
-          return;
-        }
-        Log.info(tag, "_pushToServer: pushText 成功，serverItemId=$serverItemId");
-        await dbService.historyDao.updateServerFields(history.id, serverItemId, null);
-        history.serverItemId = serverItemId;
-
-        // 新的队列同步：添加到操作队列（在serverItemId更新后）
-        if (shouldSync) {
-          historyServerSyncIntegration.onHistoryAdded(history, tags);
-        }
-      }
-    } catch (e, stack) {
-      Log.error(tag, "_pushToServer: 推送失败 $e", stack);
-    }
   }
 
   //endregion

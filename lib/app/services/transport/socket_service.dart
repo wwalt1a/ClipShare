@@ -47,7 +47,6 @@ import 'package:clipshare/app/utils/extensions/string_extension.dart';
 import 'package:clipshare/app/utils/extensions/time_extension.dart';
 import 'package:clipshare/app/utils/global.dart';
 import 'package:clipshare/app/utils/log.dart';
-import 'package:clipshare/app/services/transport/server_sync_service.dart';
 import 'package:clipshare/app/services/transport/history_server_sync_integration.dart';
 import 'package:collection/collection.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -384,8 +383,10 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
             connData["key"] = key;
           }
           self.send(connData);
-          // 连接成功后拉取服务器新内容
-          _pullFromServer();
+          // 连接成功后触发一次同步
+          if (Get.isRegistered<HistoryServerSyncIntegration>()) {
+            Get.find<HistoryServerSyncIntegration>().periodicSync();
+          }
           if (startDiscovery) {
             Future.delayed(1.s, () async {
               final list = await _forwardDiscovering();
@@ -806,6 +807,10 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
 
   ///数据同步处理
   void _onSyncMsg(MessageData msg) {
+    if (appConfig.isServerOnlyMode) {
+      Log.debug(tag, "服务器专属模式，跳过P2P数据同步");
+      return;
+    }
     Module module = Module.getValue(msg.data["module"]);
     Log.debug(tag, "module ${module.moduleName}");
     //筛选某个模块的同步处理器
@@ -837,6 +842,10 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
     bool scan = true,
     bool manual = false,
   }) async {
+    if (appConfig.isServerOnlyMode) {
+      Log.debug(tag, "服务器专属模式，跳过P2P设备发现");
+      return;
+    }
     if (_discovering) {
       Log.debug(tag, "正在发现设备");
       return;
@@ -1261,10 +1270,6 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
     if (paired) {
       //已配对，请求所有缺失数据
       reqMissingData();
-      // 如果使用转发服务器，从云端拉取离线期间的剪贴板记录
-      if (client.isForwardMode) {
-        _pullFromServer();
-      }
     }
   }
 
@@ -1275,6 +1280,10 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
   }
 
   Future<void> reqMissingData([String? devId]) async {
+    if (appConfig.isServerOnlyMode) {
+      Log.debug(tag, "服务器专属模式，跳过P2P缺失数据请求");
+      return;
+    }
     final sourceService = Get.find<ClipboardSourceService>();
     if (devId != null) {
       final devSkt = _devSockets[devId];
@@ -1652,85 +1661,6 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
       diffMinutes = endTime.difference(startTime).inMinutes;
     }
     Log.debug(tag, "重连失败 $devNameAddr");
-  }
-
-  ///中转服务器连接成功后拉取服务器端新内容并写入本地数据库
-  void _pullFromServer() {
-    if (!Get.isRegistered<ServerSyncService>()) return;
-    final serverSync = Get.find<ServerSyncService>();
-    Log.info(tag, "开始从服务器拉取剪贴板记录...");
-    serverSync.pullNewItems().then((items) async {
-      if (items.isEmpty) {
-        Log.info(tag, "服务器无新记录");
-        return;
-      }
-      Log.info(tag, "从服务器拉取到 ${items.length} 条记录");
-      final historyController = Get.find<HistoryController>();
-      final dbService = Get.find<DbService>();
-      for (final item in items) {
-        try {
-          // 检查记录是否已存在
-          final existing = await dbService.historyDao.getByServerItemId(item.id);
-          if (existing != null) {
-            Log.info(tag, "记录已存在，跳过: serverItemId=${item.id}");
-            continue;
-          }
-
-          String content;
-          int size;
-          if (item.isImage) {
-            // 下载图片字节并保存到本地文件
-            Log.info(tag, "下载图片: fileId=${item.fileId}");
-            final bytes = await serverSync.downloadImage(item.fileId);
-            if (bytes == null) {
-              Log.error(tag, "图片下载失败: fileId=${item.fileId}");
-              continue;
-            }
-            Log.info(tag, "图片下载成功，大小: ${bytes.length} 字节");
-            final fileName = "${item.fileId}.png";
-            final dirPath = Platform.isAndroid
-                ? (appConfig.saveToPictures
-                    ? "${Constants.androidPicturesPath}/${Constants.appName}"
-                    : appConfig.androidPrivatePicturesPath)
-                : appConfig.fileStorePath;
-            final filePath = "$dirPath/$fileName";
-            final file = File(filePath);
-            await file.parent.create(recursive: true);
-            await file.writeAsBytes(bytes);
-            Log.info(tag, "图片已保存到: $filePath");
-            content = file.path.normalizePath;
-            size = bytes.length;
-          } else {
-            content = item.decryptedContent ?? "";
-            size = content.length;
-            Log.info(tag, "文本记录: ${content.substring(0, content.length > 20 ? 20 : content.length)}...");
-          }
-          final history = History(
-            id: appConfig.snowflake.nextId(),
-            uid: appConfig.userId,
-            devId: item.devId,
-            time: item.createdAt.toLocal().toString(),
-            content: content,
-            type: item.isImage ? "Image" : "Text",
-            size: size,
-            serverItemId: item.id,
-            serverExpireAt: item.expireAt?.toIso8601String(),
-          );
-          historyController.addData(history, false);
-          // 添加标签
-          if (item.tags.isNotEmpty) {
-            final tagService = Get.find<TagService>();
-            for (final tagName in item.tags) {
-              await tagService.add(HistoryTag(tagName, history.id), false);
-            }
-            Log.info(tag, "已添加标签: ${item.tags}");
-          }
-          Log.info(tag, "记录已添加到本地数据库");
-        } catch (e, s) {
-          Log.error(tag, "pullFromServer item error: $e\n$s");
-        }
-      }
-    }).catchError((e, s) { Log.error(tag, "pullFromServer error: $e\n$s"); });
   }
 
   ///向兼容的设备发送消息

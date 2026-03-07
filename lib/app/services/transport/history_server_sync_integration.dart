@@ -1,8 +1,11 @@
+import 'dart:io';
 import 'package:clipshare/app/data/repository/entity/tables/history.dart';
 import 'package:clipshare/app/data/repository/entity/tables/history_tag.dart';
 import 'package:clipshare/app/data/repository/entity/tables/server_operation_queue.dart';
 import 'package:clipshare/app/data/enums/history_content_type.dart';
 import 'package:clipshare/app/modules/history_module/history_controller.dart';
+import 'package:clipshare/app/utils/constants.dart';
+import 'package:clipshare/app/utils/extensions/string_extension.dart';
 import 'package:clipshare/app/services/config_service.dart';
 import 'package:clipshare/app/services/db_service.dart';
 import 'package:clipshare/app/services/tag_service.dart';
@@ -51,8 +54,25 @@ class HistoryServerSyncIntegration extends GetxService {
         encryptedContent = serverSyncService.encrypt(history.content);
         itemType = 'text';
       } else if (normalizedType == 'image') {
-        // 图片类型，content字段存储的是文件路径
+        // 图片类型：先上传文件到服务器获得 fileId
         itemType = 'image';
+        final uploadedFileId = await serverSyncService.uploadImageForSync(history.content);
+        if (uploadedFileId == null) {
+          Log.warn(tag, 'onHistoryAdded: 图片上传失败，跳过 historyId=${history.id}');
+          return;
+        }
+        // 添加 addItem 操作，fileId 使用服务器返回的 ID
+        final addItemOp = ServerOperationQueue(
+          type: 'addItem',
+          itemId: history.id!,
+          serverItemId: history.serverItemId,
+          fileId: uploadedFileId,
+          itemType: itemType,
+          createdAt: ServerOperationQueue.dateTimeToTimestamp(DateTime.parse(history.time)),
+        );
+        await queueSyncService.addOperation(addItemOp);
+        Log.info(tag, 'onHistoryAdded: 图片已上传并加入队列 fileId=$uploadedFileId');
+        return;
       } else {
         Log.error(tag, "onHistoryAdded: 不支持的记录类型 type='${history.type}' (normalized='$normalizedType'), historyId=${history.id}");
         return;
@@ -295,9 +315,28 @@ class HistoryServerSyncIntegration extends GetxService {
       content = serverSyncService.decrypt(encryptedContent);
       Log.info(tag, "_applyAddItem: 解密完成 content长度=${content.length}");
     } else {
-      // 图片类型，content是fileId
-      Log.info(tag, "_applyAddItem: 图片类型，使用fileId作为content fileId=$fileId");
-      content = fileId ?? '';
+      // 图片类型：从服务器下载文件保存到本地
+      if (fileId == null || fileId.isEmpty) {
+        Log.warn(tag, '_applyAddItem: 图片记录缺少 fileId serverItemId=$serverItemId');
+        return;
+      }
+      final bytes = await serverSyncService.downloadSyncImage(fileId);
+      if (bytes == null) {
+        Log.warn(tag, '_applyAddItem: 图片下载失败 fileId=$fileId');
+        return;
+      }
+      final fileName = '$fileId.png';
+      final dirPath = Platform.isAndroid
+          ? (appConfig.saveToPictures
+              ? '${Constants.androidPicturesPath}/${Constants.appName}'
+              : appConfig.androidPrivatePicturesPath)
+          : appConfig.fileStorePath;
+      final filePath = '$dirPath/$fileName';
+      final file = File(filePath);
+      await file.parent.create(recursive: true);
+      await file.writeAsBytes(bytes);
+      content = file.path.normalizePath;
+      Log.info(tag, '_applyAddItem: 图片已保存 filePath=$filePath');
     }
 
     // 按内容和来源设备去重（防止P2P路径已添加，服务器路径再次添加）

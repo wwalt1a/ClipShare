@@ -323,7 +323,7 @@ class _ForwardServerEditDialogState extends State<ForwardServerEditDialog> {
                       decoration: const InputDecoration(
                         labelText: "API 地址（可选）",
                         hintText: "https://api.yourdomain.com:8888",
-                        helperText: "走反代时填写，留空则使用 http://host/api/clip",
+                        helperText: "走反代时填写，留空则使用 http://host",
                         helperMaxLines: 2,
                         border: OutlineInputBorder(),
                       ),

@@ -615,6 +615,9 @@ class ConfigService extends GetxService {
   /// 是否已设置同步密码
   bool get hasSyncPassword => _syncPassword.value.isNotEmpty;
 
+  /// 是否处于服务器专属模式（勾选了服务器中转，P2P完全停用）
+  bool get isServerOnlyMode => enableForward && forwardWay == ForwardWay.server;
+
   /// groupId = PBKDF2(syncPassword)，用于服务器端命名空间，不含明文密码
   String get syncGroupId {
     if (!hasSyncPassword) return '';

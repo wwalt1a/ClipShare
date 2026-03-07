@@ -6,15 +6,15 @@ class ForwardServerConfig {
   String? key;
   /// 云端同步 API 地址（可选）。
   /// 填写示例：https://api.yourdomain.com:8888
-  /// 留空则自动使用 http://<host>/api/clip（服务端默认 80 端口）
+  /// 留空则自动使用 http://<host>（服务端默认 80 端口）
   String apiBaseUrl;
 
   String get server => "$host:$port";
 
   String get apiBase {
     final base = apiBaseUrl.trim().replaceAll(RegExp(r'/+$'), '');
-    if (base.isNotEmpty) return "$base/api/clip";
-    return "http://$host/api/clip";
+    if (base.isNotEmpty) return base;
+    return "http://$host";
   }
 
   ForwardServerConfig({
