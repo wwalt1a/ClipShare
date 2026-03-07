@@ -768,7 +768,7 @@ class ConfigService extends GetxService {
       null,
       convert: (value) {
         try {
-          return CleanDataConfig.fromJson(cleanDataConfig.toString());
+          return CleanDataConfig.fromJson(value.toString());
         } catch (err, stack) {
           debugPrint(err.toString());
           debugPrintStack(stackTrace: stack);
