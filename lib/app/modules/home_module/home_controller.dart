@@ -457,6 +457,8 @@ class HomeController extends GetxController with WidgetsBindingObserver, ScreenO
         storageService.uploadSyncFailedData();
       });
       Future.delayed(delayMs.ms, sktService.restartDiscoveryDevices);
+      // 网络恢复时重新连接中转服务器（服务器模式下设备发现被禁用，需手动触发）
+      Future.delayed(delayMs.ms, () => sktService.connectForwardServer(true));
     }
   }
 

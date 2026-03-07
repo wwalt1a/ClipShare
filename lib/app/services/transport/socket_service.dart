@@ -334,10 +334,7 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
       return;
     }
     if (appConfig.currentNetWorkType.value == ConnectivityResult.none) {
-      if (_autoConnForwardServer) {
-        Log.debug(tag, "中转连接取消重连(无网络)");
-      }
-      _autoConnForwardServer = false;
+      Log.debug(tag, "中转连接取消重连(无网络)");
       return;
     }
     if (!appConfig.enableForward) return;
