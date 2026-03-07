@@ -182,10 +182,16 @@ class HistoryServerSyncIntegration extends GetxService {
     }
   }
 
+  bool _isSyncing = false;
+
   /// 定期同步（推送队列 + 拉取操作）
   Future<void> periodicSync() async {
     if (!_isEnabled) return;
-
+    if (_isSyncing) {
+      Log.info(tag, "periodicSync: 已有同步在进行中，跳过");
+      return;
+    }
+    _isSyncing = true;
     try {
       Log.info(tag, "periodicSync: 开始定期同步");
 
@@ -234,6 +240,8 @@ class HistoryServerSyncIntegration extends GetxService {
       Log.info(tag, "periodicSync: 同步完成");
     } catch (err, stack) {
       Log.error(tag, "periodicSync: 异常 $err", stack);
+    } finally {
+      _isSyncing = false;
     }
   }
 

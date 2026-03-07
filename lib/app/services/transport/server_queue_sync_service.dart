@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:clipshare/app/data/repository/entity/tables/history.dart';
 import 'package:clipshare/app/data/repository/entity/tables/server_operation_queue.dart';
+import 'package:clipshare/app/modules/history_module/history_controller.dart';
 import 'package:clipshare/app/services/config_service.dart';
 import 'package:clipshare/app/services/db_service.dart';
 import 'package:clipshare/app/services/transport/server_sync_service.dart';
@@ -169,9 +170,23 @@ class ServerQueueSyncService extends GetxService {
         if (response.statusCode == 200) {
           final result = jsonDecode(response.body);
           if (result['code'] == 200) {
-            // 标记为已同步
+            // 标记队列操作为已同步
             final ids = operations.map((o) => o.id!).toList();
             await dbService.serverOpQueueDao.markAllAsSynced(ids);
+            // 更新 addItem 操作对应的本地历史记录 sync=true（数据库+内存）
+            if (Get.isRegistered<HistoryController>()) {
+              final historyController = Get.find<HistoryController>();
+              for (final op in operations) {
+                if (op.type == 'addItem') {
+                  await dbService.historyDao.setSync(op.itemId, true);
+                  historyController.updateData(
+                    (his) => his.id == op.itemId,
+                    (his) => his.sync = true,
+                    true,
+                  );
+                }
+              }
+            }
             Log.info(tag, "pushQueue: 推送成功");
             return true;
           }
