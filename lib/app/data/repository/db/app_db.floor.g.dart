@@ -442,6 +442,27 @@ class _$HistoryDao extends HistoryDao {
   }
 
   @override
+  Future<History?> getByContentAndDevId(String content, String devId) async {
+    return _queryAdapter.query(
+        'select * from history where content = ?1 and devId = ?2 limit 1',
+        mapper: (Map<String, Object?> row) => History(
+            id: row['id'] as int,
+            uid: row['uid'] as int,
+            time: row['time'] as String,
+            content: row['content'] as String,
+            type: row['type'] as String,
+            devId: row['devId'] as String,
+            size: row['size'] as int,
+            top: (row['top'] as int) != 0,
+            sync: (row['sync'] as int) != 0,
+            updateTime: row['updateTime'] as String?,
+            source: row['source'] as String?,
+            serverExpireAt: row['serverExpireAt'] as String?,
+            serverItemId: row['serverItemId'] as String?),
+        arguments: [content, devId]);
+  }
+
+  @override
   Future<List<History>> getHistoriesPageByWhere(
     int uid,
     int fromId,

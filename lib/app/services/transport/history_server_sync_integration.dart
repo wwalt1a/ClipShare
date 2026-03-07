@@ -274,7 +274,7 @@ class HistoryServerSyncIntegration extends GetxService {
 
     Log.info(tag, "_applyAddItem: 参数解析完成 serverItemId=$serverItemId, itemType=$itemType, fileId=$fileId, encryptedContent长度=${encryptedContent?.length ?? 0}");
 
-    // 检查是否已存在
+    // 检查是否已存在（按 serverItemId）
     Log.info(tag, "_applyAddItem: 检查记录是否已存在 serverItemId=$serverItemId");
     final existing = await dbService.historyDao.getByServerItemId(serverItemId);
     if (existing != null) {
@@ -300,6 +300,22 @@ class HistoryServerSyncIntegration extends GetxService {
       content = fileId ?? '';
     }
 
+    // 按内容和来源设备去重（防止P2P路径已添加，服务器路径再次添加）
+    final sourceDevId = op['devId'] as String? ?? '';
+    if (sourceDevId.isNotEmpty && itemType == 'text') {
+      final existingByContent = await dbService.historyDao.getByContentAndDevId(content, sourceDevId);
+      if (existingByContent != null) {
+        // 已存在，只更新 serverItemId
+        if (existingByContent.serverItemId == null || existingByContent.serverItemId!.isEmpty) {
+          await dbService.historyDao.updateServerFields(existingByContent.id, serverItemId, null);
+          Log.info(tag, "_applyAddItem: P2P记录已存在，更新serverItemId serverItemId=$serverItemId");
+        } else {
+          Log.info(tag, "_applyAddItem: 内容已存在，跳过 serverItemId=$serverItemId");
+        }
+        return;
+      }
+    }
+
     Log.info(tag, "_applyAddItem: 解析创建时间 createdAtStr=$createdAtStr");
     final createdAt = DateTime.parse(createdAtStr);
 
@@ -315,7 +331,7 @@ class HistoryServerSyncIntegration extends GetxService {
       content: content,
       type: dbType,
       time: createdAt.toLocal().toString(),
-      devId: appConfig.device.guid,
+      devId: sourceDevId.isNotEmpty ? sourceDevId : appConfig.device.guid,
       size: content.length,
       serverItemId: serverItemId,
       sync: true, // 来自服务器同步，标记为已同步，避免显示未同步图标

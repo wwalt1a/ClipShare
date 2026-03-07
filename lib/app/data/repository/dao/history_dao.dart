@@ -26,6 +26,10 @@ abstract class HistoryDao {
   @Query("select * from history where serverItemId = :serverItemId limit 1")
   Future<History?> getByServerItemId(String serverItemId);
 
+  /// 根据 content 和 devId 查询记录（用于防止P2P与服务器路径重复添加）
+  @Query("select * from history where content = :content and devId = :devId limit 1")
+  Future<History?> getByContentAndDevId(String content, String devId);
+
   /// 根据条件查询，一次查 100 条，置顶优先，id 降序
   @Query("""
   SELECT * FROM History
