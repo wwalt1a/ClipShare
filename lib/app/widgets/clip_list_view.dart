@@ -22,6 +22,7 @@ import 'package:clipshare/app/services/config_service.dart';
 import 'package:clipshare/app/services/db_service.dart';
 import 'package:clipshare/app/services/device_service.dart';
 import 'package:clipshare/app/services/transport/socket_service.dart';
+import 'package:clipshare/app/services/transport/history_server_sync_integration.dart';
 import 'package:clipshare/app/utils/constants.dart';
 import 'package:clipshare/app/utils/global.dart';
 import 'package:clipshare/app/utils/log.dart';
@@ -196,6 +197,11 @@ class ClipListViewState extends State<ClipListView> with WidgetsBindingObserver 
 
   ///删除项目
   Future<void> deleteItem(ClipData item, {bool deleteFile = false, bool onlyDeleteLocal = false}) async {
+    // 服务器同步集成：历史记录删除
+    if (!onlyDeleteLocal && Get.isRegistered<HistoryServerSyncIntegration>()) {
+      final serverSyncIntegration = Get.find<HistoryServerSyncIntegration>();
+      await serverSyncIntegration.onHistoryDeleted(item.data.id, item.data.serverItemId);
+    }
     await dbService.historyDao.deleteByCascade(item.data.id);
     widget.onRemove(item.data.id);
     final historyController = Get.find<HistoryController>();

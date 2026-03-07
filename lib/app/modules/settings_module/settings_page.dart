@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:animated_theme_switcher/animated_theme_switcher.dart';
+import 'package:clipshare/app/routes/app_pages.dart';
 import 'package:clipshare/app/data/enums/forward_server_status.dart';
 import 'package:clipshare/app/data/enums/hot_key_type.dart';
 import 'package:clipshare/app/services/android_notification_listener_service.dart';
@@ -1509,6 +1510,179 @@ class SettingsPage extends GetView<SettingsController> {
                             );
                           },
                         ),
+                      if (appConfig.forwardWay == ForwardWay.server)
+                        SettingCard(
+                          title: const Text("云端同步密码"),
+                          description: Text(
+                            appConfig.hasSyncPassword
+                                ? "已设置 · 所有设备需使用相同密码"
+                                : "未设置，请手动输入或生成密码以启用云端加密同步",
+                          ),
+                          value: null,
+                          action: (v) => Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (appConfig.hasSyncPassword)
+                                IconButton(
+                                  tooltip: "查看密码",
+                                  icon: const Icon(Icons.visibility_outlined, color: Colors.blueGrey),
+                                  onPressed: () {
+                                    showDialog(
+                                      context: context,
+                                      builder: (ctx) => AlertDialog(
+                                        title: const Text("同步密码"),
+                                        content: SelectableText(
+                                          appConfig.syncPassword,
+                                          style: const TextStyle(fontFamily: 'monospace'),
+                                        ),
+                                        actions: [
+                                          TextButton.icon(
+                                            onPressed: () {
+                                              Clipboard.setData(ClipboardData(text: appConfig.syncPassword));
+                                              Global.showSnackBarSuc(
+                                                context: Get.context!,
+                                                text: "密码已复制到剪贴板",
+                                              );
+                                            },
+                                            icon: const Icon(Icons.copy),
+                                            label: const Text("复制"),
+                                          ),
+                                          TextButton(
+                                            onPressed: () => Navigator.of(ctx).pop(),
+                                            child: Text(TranslationKey.dialogConfirmText.tr),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                ),
+                              TextButton(
+                                onPressed: () {
+                                  final passwordController = TextEditingController();
+                                  showDialog(
+                                    context: context,
+                                    builder: (ctx) => AlertDialog(
+                                      title: const Text("手动输入密码"),
+                                      content: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Text("请输入64位十六进制密码（32字节）"),
+                                          const SizedBox(height: 10),
+                                          TextField(
+                                            controller: passwordController,
+                                            decoration: const InputDecoration(
+                                              hintText: "例如: a1b2c3d4...",
+                                              border: OutlineInputBorder(),
+                                            ),
+                                            maxLines: 3,
+                                          ),
+                                        ],
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.of(ctx).pop(),
+                                          child: Text(TranslationKey.dialogCancelText.tr),
+                                        ),
+                                        TextButton(
+                                          onPressed: () async {
+                                            final pwd = passwordController.text.trim();
+                                            if (pwd.isEmpty) {
+                                              Global.showSnackBarErr(
+                                                context: Get.context!,
+                                                text: "密码不能为空",
+                                              );
+                                              return;
+                                            }
+                                            if (pwd.length != 64 || !RegExp(r'^[0-9a-fA-F]{64}$').hasMatch(pwd)) {
+                                              Global.showSnackBarErr(
+                                                context: Get.context!,
+                                                text: "密码格式错误，必须是64位十六进制字符",
+                                              );
+                                              return;
+                                            }
+                                            Navigator.of(ctx).pop();
+                                            await appConfig.setSyncPassword(pwd.toLowerCase());
+                                            Global.showSnackBarSuc(
+                                              context: Get.context!,
+                                              text: "同步密码已设置",
+                                            );
+                                          },
+                                          child: Text(TranslationKey.dialogConfirmText.tr),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                                child: const Text("手动输入"),
+                              ),
+                              TextButton(
+                                onPressed: () {
+                                  final isRegen = appConfig.hasSyncPassword;
+                                  showDialog(
+                                    context: context,
+                                    builder: (ctx) => AlertDialog(
+                                      title: Text(isRegen ? "重新生成密码" : "生成同步密码"),
+                                      content: Text(
+                                        isRegen
+                                            ? "重新生成后旧密码失效，所有设备需手动输入新密码才能恢复云端同步，确定继续？"
+                                            : "将生成新的随机密码，请复制密码并在其他设备上手动输入。",
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.of(ctx).pop(),
+                                          child: Text(TranslationKey.dialogCancelText.tr),
+                                        ),
+                                        TextButton(
+                                          onPressed: () async {
+                                            Navigator.of(ctx).pop();
+                                            await appConfig.setSyncPassword();
+                                            showDialog(
+                                              context: Get.context!,
+                                              builder: (ctx2) => AlertDialog(
+                                                title: const Text("同步密码已生成"),
+                                                content: Column(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    const Text("请复制此密码并在其他设备上手动输入："),
+                                                    const SizedBox(height: 10),
+                                                    SelectableText(
+                                                      appConfig.syncPassword,
+                                                      style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                                                    ),
+                                                  ],
+                                                ),
+                                                actions: [
+                                                  TextButton.icon(
+                                                    onPressed: () {
+                                                      Clipboard.setData(ClipboardData(text: appConfig.syncPassword));
+                                                      Global.showSnackBarSuc(
+                                                        context: Get.context!,
+                                                        text: "密码已复制到剪贴板",
+                                                      );
+                                                    },
+                                                    icon: const Icon(Icons.copy),
+                                                    label: const Text("复制"),
+                                                  ),
+                                                  TextButton(
+                                                    onPressed: () => Navigator.of(ctx2).pop(),
+                                                    child: Text(TranslationKey.dialogConfirmText.tr),
+                                                  ),
+                                                ],
+                                              ),
+                                            );
+                                          },
+                                          child: Text(TranslationKey.dialogConfirmText.tr),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                                child: Text(appConfig.hasSyncPassword ? "重新生成" : "生成密码"),
+                              ),
+                            ],
+                          ),
+                        ),
                       if (appConfig.forwardWay == ForwardWay.webdav)
                         SettingCard(
                           title: Text(
@@ -2299,6 +2473,16 @@ class SettingsPage extends GetView<SettingsController> {
                           icon: arrowForwardIcon,
                         ),
                         onTap: controller.gotoCleanDataPage,
+                      ),
+                      SettingCard(
+                        title: const Text("标签管理"),
+                        description: const Text("批量删除标签（不影响被打标签的剪贴板内容）"),
+                        value: null,
+                        action: (v) => IconButton(
+                          onPressed: () => Get.toNamed(Routes.TAG_MANAGE),
+                          icon: arrowForwardIcon,
+                        ),
+                        onTap: () => Get.toNamed(Routes.TAG_MANAGE),
                       ),
                       SettingCard<int>(
                         title: Text(TranslationKey.syncOutDateSettingTitle.tr),

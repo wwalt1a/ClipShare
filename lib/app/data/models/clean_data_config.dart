@@ -17,6 +17,7 @@ class CleanDataConfig {
   final DateTime? lastCleanTime;
   final DateTime? nextCleanTime;
   final int? saveDays;
+  final List<String> protectedTags; // 受保护的标签
 
   const CleanDataConfig({
     required this.tags,
@@ -30,6 +31,7 @@ class CleanDataConfig {
     this.lastCleanTime,
     this.nextCleanTime,
     this.saveDays,
+    this.protectedTags = const [],
   });
 
   CleanDataConfig copyWith({
@@ -44,6 +46,7 @@ class CleanDataConfig {
     DateTime? lastCleanTime,
     DateTime? nextCleanTime,
     int? saveDays,
+    List<String>? protectedTags,
   }) {
     return CleanDataConfig(
       tags: tags ?? this.tags,
@@ -57,6 +60,7 @@ class CleanDataConfig {
       lastCleanTime: lastCleanTime ?? this.lastCleanTime,
       nextCleanTime: nextCleanTime ?? this.nextCleanTime,
       saveDays: saveDays ?? this.saveDays,
+      protectedTags: protectedTags ?? this.protectedTags,
     );
   }
 
@@ -74,7 +78,8 @@ class CleanDataConfig {
       autoCleanFreq: freq == CleanDataFreq.unknown ? CleanDataFreq.day : freq,
       lastCleanTime: DateTime.tryParse(map['lastCleanTime']?.toString() ?? ""),
       nextCleanTime: DateTime.tryParse(map['nextCleanTime']?.toString() ?? ""),
-      saveDays: map['saveDays']?.toString().toInt()
+      saveDays: map['saveDays']?.toString().toInt(),
+      protectedTags: (map['protectedTags'] as List<dynamic>?)?.cast<String>() ?? [],
     );
   }
 
@@ -91,6 +96,7 @@ class CleanDataConfig {
       "lastCleanTime": lastCleanTime?.format(),
       "nextCleanTime": nextCleanTime?.format(),
       "saveDays": saveDays,
+      "protectedTags": protectedTags,
     };
   }
 

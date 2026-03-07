@@ -1,0 +1,315 @@
+import 'dart:convert';
+import 'package:clipshare/app/data/repository/entity/tables/history.dart';
+import 'package:clipshare/app/data/repository/entity/tables/server_operation_queue.dart';
+import 'package:clipshare/app/modules/history_module/history_controller.dart';
+import 'package:clipshare/app/services/config_service.dart';
+import 'package:clipshare/app/services/db_service.dart';
+import 'package:clipshare/app/services/transport/server_sync_service.dart';
+import 'package:clipshare/app/utils/log.dart';
+import 'package:get/get.dart';
+import 'package:http/http.dart' as http;
+
+/// 服务器操作队列同步服务
+/// 负责将本地操作队列同步到服务器
+class ServerQueueSyncService extends GetxService {
+  static const tag = "ServerQueueSyncService";
+
+  final appConfig = Get.find<ConfigService>();
+  final dbService = Get.find<DbService>();
+  final serverSyncService = Get.find<ServerSyncService>();
+
+  bool get _isEnabled =>
+      appConfig.forwardServer != null && appConfig.hasSyncPassword;
+
+  String get _apiBase {
+    final base = appConfig.forwardServer!.apiBaseUrl.trim().replaceAll(RegExp(r'/+$'), '');
+    if (base.isNotEmpty) return base;
+    return "http://${appConfig.forwardServer!.host}";
+  }
+  String get _groupId => appConfig.syncGroupId;
+  String get _devId => appConfig.device.guid;
+
+  /// 首次全量同步
+  Future<bool> initSync() async {
+    if (!_isEnabled) {
+      Log.warn(tag, "initSync: 云端同步未启用");
+      return false;
+    }
+
+    try {
+      Log.info(tag, "initSync: 开始首次全量同步");
+
+      // 获取所有历史记录（使用uid=0获取所有用户的记录）
+      final histories = await dbService.historyDao.getHistoriesPage(0, 0);
+      Log.info(tag, "initSync: 找到 ${histories.length} 条历史记录");
+
+      if (histories.isEmpty) {
+        Log.info(tag, "initSync: 无数据需要同步");
+        return true;
+      }
+
+      final items = <Map<String, dynamic>>[];
+
+      for (final history in histories) {
+        // 获取标签
+        final tags = await dbService.historyTagDao.getAllByHisId(history.id!);
+        final encryptedTags = tags.map((t) => serverSyncService.encrypt(t.tagName)).toList();
+
+        String? encryptedContent;
+        String itemType;
+
+        if (history.type == 'text') {
+          encryptedContent = serverSyncService.encrypt(history.content);
+          itemType = 'text';
+        } else {
+          // 图片类型，content字段存储的是文件路径
+          itemType = 'image';
+        }
+
+        final serverItemId = history.serverItemId ?? history.id.toString();
+
+        items.add({
+          'itemId': serverItemId,
+          'type': itemType,
+          'content': encryptedContent,
+          'fileId': itemType == 'image' ? history.content : null,
+          'tags': encryptedTags,
+          'createdAt': history.time,
+        });
+
+        if (history.serverItemId == null) {
+          await dbService.historyDao.updateServerFields(history.id, serverItemId, null);
+        }
+      }
+
+      final uri = Uri.parse('$_apiBase/api/sync/init');
+      final body = jsonEncode({
+        'groupId': _groupId,
+        'devId': _devId,
+        'items': items,
+      });
+
+      Log.info(tag, "initSync: 请求 $uri, 同步 ${items.length} 条记录");
+
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: body,
+      );
+
+      if (response.statusCode == 200) {
+        final result = jsonDecode(response.body);
+        if (result['code'] == 200) {
+          Log.info(tag, "initSync: 全量同步成功");
+          return true;
+        }
+      }
+
+      Log.error(tag, "initSync: 同步失败 ${response.statusCode} ${response.body}");
+      return false;
+    } catch (err, stack) {
+      Log.error(tag, "initSync: 异常 $err", stack);
+      return false;
+    }
+  }
+
+  /// 推送操作队列到服务器（带重试）
+  Future<bool> pushQueue() async {
+    if (!_isEnabled) {
+      return false;
+    }
+
+    int retryCount = 0;
+    const maxRetries = 3;
+    const retryDelays = [
+      Duration(seconds: 2),
+      Duration(seconds: 5),
+      Duration(seconds: 10),
+    ];
+
+    while (retryCount <= maxRetries) {
+      try {
+        // 获取未同步的操作
+        final operations = await dbService.serverOpQueueDao.getUnsyncedOperations();
+        if (operations.isEmpty) {
+          return true;
+        }
+
+        Log.info(tag, "pushQueue: 推送 ${operations.length} 条操作 (尝试 ${retryCount + 1}/${maxRetries + 1})");
+
+        final ops = <Map<String, dynamic>>[];
+        for (final op in operations) {
+          final opMap = {
+            'type': op.type,
+            'itemId': op.serverItemId ?? op.itemId.toString(),
+            'content': op.content,
+            'fileId': op.fileId,
+            'itemType': op.itemType,
+            'tagName': op.tagName,
+            'createdAt': op.createdAtDateTime.toUtc().toIso8601String(),
+          };
+          ops.add(opMap);
+
+          // 详细日志：输出每个操作的完整信息
+          Log.info(tag, "pushQueue: 操作 ${ops.length}: type=${op.type}, itemId=${op.serverItemId ?? op.itemId}, itemType=${op.itemType}, fileId=${op.fileId}, tagName=${op.tagName}, content长度=${op.content?.length ?? 0}");
+        }
+
+        final uri = Uri.parse('$_apiBase/api/sync/push');
+        final body = jsonEncode({
+          'groupId': _groupId,
+          'devId': _devId,
+          'operations': ops,
+        });
+
+        final response = await http.post(
+          uri,
+          headers: {'Content-Type': 'application/json'},
+          body: body,
+        ).timeout(const Duration(seconds: 30));
+
+        if (response.statusCode == 200) {
+          final result = jsonDecode(response.body);
+          if (result['code'] == 200) {
+            // 标记队列操作为已同步
+            final ids = operations.map((o) => o.id!).toList();
+            await dbService.serverOpQueueDao.markAllAsSynced(ids);
+            // 更新 addItem 操作对应的本地历史记录 sync=true 和 serverItemId（数据库+内存）
+            if (Get.isRegistered<HistoryController>()) {
+              final historyController = Get.find<HistoryController>();
+              for (final op in operations) {
+                if (op.type == 'addItem') {
+                  final serverItemId = op.serverItemId ?? op.itemId.toString();
+                  await dbService.historyDao.setSync(op.itemId, true);
+                  await dbService.historyDao.updateServerFields(op.itemId, serverItemId, null);
+                  historyController.updateData(
+                    (his) => his.id == op.itemId,
+                    (his) {
+                      his.sync = true;
+                      his.serverItemId = serverItemId;
+                    },
+                    true,
+                  );
+                }
+              }
+            }
+            Log.info(tag, "pushQueue: 推送成功");
+            return true;
+          }
+        }
+
+        Log.error(tag, "pushQueue: 推送失败 ${response.statusCode}");
+
+        // 如果不是最后一次尝试，等待后重试
+        if (retryCount < maxRetries) {
+          final delay = retryDelays[retryCount];
+          Log.info(tag, "pushQueue: ${delay.inSeconds}秒后重试...");
+          await Future.delayed(delay);
+          retryCount++;
+          continue;
+        }
+
+        return false;
+      } catch (err, stack) {
+        Log.error(tag, "pushQueue: 异常 $err", stack);
+
+        // 如果不是最后一次尝试，等待后重试
+        if (retryCount < maxRetries) {
+          final delay = retryDelays[retryCount];
+          Log.info(tag, "pushQueue: ${delay.inSeconds}秒后重试...");
+          await Future.delayed(delay);
+          retryCount++;
+          continue;
+        }
+
+        return false;
+      }
+    }
+
+    return false;
+  }
+
+  /// 从服务器拉取操作日志（带重试）
+  Future<List<Map<String, dynamic>>> pullOperations(DateTime since) async {
+    if (!_isEnabled) {
+      return [];
+    }
+
+    int retryCount = 0;
+    const maxRetries = 3;
+    const retryDelays = [
+      Duration(seconds: 2),
+      Duration(seconds: 5),
+      Duration(seconds: 10),
+    ];
+
+    while (retryCount <= maxRetries) {
+      try {
+        final uri = Uri.parse('$_apiBase/api/sync/pull').replace(queryParameters: {
+          'groupId': _groupId,
+          'since': since.toUtc().toIso8601String(),
+        });
+
+        Log.info(tag, "pullOperations: 请求 $uri (尝试 ${retryCount + 1}/${maxRetries + 1})");
+
+        final response = await http.get(uri).timeout(const Duration(seconds: 30));
+
+        if (response.statusCode == 200) {
+          final result = jsonDecode(response.body);
+          if (result['code'] == 200 && result['data'] != null) {
+            final operationsData = result['data']['operations'];
+            if (operationsData == null) {
+              Log.info(tag, "pullOperations: 无新操作");
+              return [];
+            }
+            final operations = (operationsData as List)
+                .map((e) => e as Map<String, dynamic>)
+                .toList();
+            Log.info(tag, "pullOperations: 拉取到 ${operations.length} 条操作");
+            return operations;
+          }
+        }
+
+        Log.error(tag, "pullOperations: 拉取失败 ${response.statusCode}");
+
+        // 如果不是最后一次尝试，等待后重试
+        if (retryCount < maxRetries) {
+          final delay = retryDelays[retryCount];
+          Log.info(tag, "pullOperations: ${delay.inSeconds}秒后重试...");
+          await Future.delayed(delay);
+          retryCount++;
+          continue;
+        }
+
+        return [];
+      } catch (err, stack) {
+        Log.error(tag, "pullOperations: 异常 $err", stack);
+
+        // 如果不是最后一次尝试，等待后重试
+        if (retryCount < maxRetries) {
+          final delay = retryDelays[retryCount];
+          Log.info(tag, "pullOperations: ${delay.inSeconds}秒后重试...");
+          await Future.delayed(delay);
+          retryCount++;
+          continue;
+        }
+
+        return [];
+      }
+    }
+
+    return [];
+  }
+
+  /// 添加操作到队列
+  Future<void> addOperation(ServerOperationQueue operation) async {
+    await dbService.serverOpQueueDao.add(operation);
+    // 尝试立即推送
+    await pushQueue();
+  }
+
+  /// 清理队列
+  Future<void> cleanQueue() async {
+    await dbService.serverOpQueueDao.cleanQueue();
+  }
+}
+

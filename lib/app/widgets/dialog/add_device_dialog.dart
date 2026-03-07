@@ -1,6 +1,7 @@
 import 'package:clipshare/app/data/enums/translation_key.dart';
 import 'package:clipshare/app/data/models/qr_device_connection_info.dart';
 import 'package:clipshare/app/routes/app_pages.dart';
+import 'package:clipshare/app/services/config_service.dart';
 import 'package:clipshare/app/services/transport/socket_service.dart';
 import 'package:clipshare/app/utils/constants.dart';
 import 'package:clipshare/app/utils/extensions/platform_extension.dart';
@@ -9,6 +10,7 @@ import 'package:clipshare/app/utils/global.dart';
 import 'package:clipshare/app/utils/log.dart';
 import 'package:clipshare/app/utils/permission_helper.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -36,6 +38,7 @@ class _AddDeviceDialogState extends State<AddDeviceDialog> {
   var _connecting = false;
   var _connectErr = false;
   final sktService = Get.find<SocketService>();
+  final appConfig = Get.find<ConfigService>();
   bool forwardMode = false;
   Map<String, dynamic> _connectData = {};
   bool forwardConnected = false;
@@ -189,25 +192,58 @@ class _AddDeviceDialogState extends State<AddDeviceDialog> {
                   ],
                 ),
                 visible: forwardMode,
-                child: SizedBox(
-                  height: 80,
-                  child: TextField(
-                    autofocus: true,
-                    enabled: !_connecting,
-                    controller: _forwardIdEditor,
-                    decoration: InputDecoration(
-                      labelText: TranslationKey.deviceId.tr,
-                      border: const OutlineInputBorder(),
-                      errorText: _showForwardIdErr ? _forwardIdErrTxt : null,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 本机设备ID显示
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '${TranslationKey.deviceId.tr}: ${appConfig.device.guid}',
+                              style: const TextStyle(fontSize: 12),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.copy, size: 16),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                            tooltip: TranslationKey.copyDeviceId.tr,
+                            onPressed: () {
+                              Clipboard.setData(ClipboardData(text: appConfig.device.guid));
+                              Global.showSnackBarSuc(
+                                context: context,
+                                text: TranslationKey.copySuccess.tr,
+                              );
+                            },
+                          ),
+                        ],
+                      ),
                     ),
-                    onChanged: (text) {
-                      if (_showForwardIdErr) {
-                        setState(() {
-                          _showForwardIdErr = false;
-                        });
-                      }
-                    },
-                  ),
+                    SizedBox(
+                      height: 80,
+                      child: TextField(
+                        autofocus: true,
+                        enabled: !_connecting,
+                        controller: _forwardIdEditor,
+                        decoration: InputDecoration(
+                          labelText: TranslationKey.deviceId.tr,
+                          border: const OutlineInputBorder(),
+                          errorText: _showForwardIdErr ? _forwardIdErrTxt : null,
+                        ),
+                        onChanged: (text) {
+                          if (_showForwardIdErr) {
+                            setState(() {
+                              _showForwardIdErr = false;
+                            });
+                          }
+                        },
+                      ),
+                    ),
+                  ],
                 ),
               ),
               CheckboxListTile(

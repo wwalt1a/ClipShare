@@ -42,6 +42,7 @@ import 'package:clipshare/app/services/clipboard_source_service.dart';
 import 'package:clipshare/app/services/config_service.dart';
 import 'package:clipshare/app/services/db_service.dart';
 import 'package:clipshare/app/services/transport/socket_service.dart';
+import 'package:clipshare/app/services/transport/history_server_sync_integration.dart';
 import 'package:clipshare/app/services/tag_service.dart';
 import 'package:clipshare/app/utils/constants.dart';
 import 'package:clipshare/app/utils/extensions/file_extension.dart';
@@ -69,6 +70,7 @@ class HistoryController extends GetxController with WidgetsBindingObserver imple
   final sourceService = Get.find<ClipboardSourceService>();
   final tagService = Get.find<TagService>();
   final devService = Get.find<DeviceService>();
+  final historyServerSyncIntegration = Get.find<HistoryServerSyncIntegration>();
 
   //region 属性
   final String tag = "HistoryController";
@@ -612,7 +614,9 @@ class HistoryController extends GetxController with WidgetsBindingObserver imple
     if (cnt <= 0) return;
     notifyHistoryWindow();
     //将同步过来的数据添加到本地操作记录
-    dbService.opRecordDao.add(opRecord.copyWith(data: history.id.toString()));
+    if (cnt == history.id || opRecord.method != OpMethod.add) {
+      dbService.opRecordDao.add(opRecord.copyWith(data: history.id.toString()));
+    }
     //发送同步确认
     await sender.sendData(MsgType.ackSync, {
       "id": opRecord.id,
@@ -645,12 +649,14 @@ class HistoryController extends GetxController with WidgetsBindingObserver imple
     if (cnt <= 0) return;
     notifyHistoryWindow();
     //将同步过来的数据添加到本地操作记录
-    await dbService.opRecordDao.add(
-      opRecord.copyWith(
-        data: history.id.toString(),
-        storageSync: true,
-      ),
-    );
+    if (cnt == history.id || opRecord.method != OpMethod.add) {
+      await dbService.opRecordDao.add(
+        opRecord.copyWith(
+          data: history.id.toString(),
+          storageSync: true,
+        ),
+      );
+    }
   }
 
   ///添加页面和数据库数据
@@ -661,11 +667,44 @@ class HistoryController extends GetxController with WidgetsBindingObserver imple
       final devService = Get.find<DeviceService>();
       androidChannelService.sendHistoryChangedBroadcast(contentType, history.content, history.devId, devService.getName(history.devId));
     }
+    // 如果携带 serverItemId，先检查本地是否已存在相同记录（防止服务器队列路径和 P2P 路径重复添加）
+    if (history.serverItemId != null && history.serverItemId!.isNotEmpty) {
+      final existing = await dbService.historyDao.getByServerItemId(history.serverItemId!);
+      if (existing != null) {
+        Log.info(tag, "addData: 记录已存在，跳过 serverItemId=${history.serverItemId}, existingId=${existing.id}");
+        return existing.id;
+      }
+    }
     var cnt = await dbService.historyDao.add(clip.data);
     if (cnt <= 0) return cnt;
     notifyHistoryWindow();
     _tempList.add(clip);
     debounceUpdate();
+
+    // 根据内容类型自动添加标签（对所有记录执行，无论是否同步）
+    // 使用 notify=false 避免在 serverItemId 更新前触发服务器同步（统一在 _pushToServer 完成后的 onHistoryAdded 中处理）
+    switch (contentType) {
+      case HistoryContentType.text:
+        var rules = jsonDecode(appConfig.tagRules)["data"];
+        for (var rule in rules) {
+          if (history.content.matchRegExp(rule["rule"])) {
+            //添加标签
+            var tag = HistoryTag(rule["name"], history.id);
+            tagService.add(tag, false);
+          }
+        }
+        break;
+      case HistoryContentType.sms:
+        //添加标签
+        tagService.add(HistoryTag(TranslationKey.sms.tr, history.id), false);
+        break;
+      case HistoryContentType.notification:
+        //添加通知标签
+        tagService.add(HistoryTag(TranslationKey.notification.tr, history.id), false);
+        break;
+      default:
+    }
+
     if (!shouldSync) {
       final source = history.source;
       final appInfo = sourceService.getAppInfoByAppId(source);
@@ -745,27 +784,12 @@ class HistoryController extends GetxController with WidgetsBindingObserver imple
     }
     //endregion
 
-    switch (contentType) {
-      case HistoryContentType.text:
-        var rules = jsonDecode(appConfig.tagRules)["data"];
-        for (var rule in rules) {
-          if (history.content.matchRegExp(rule["rule"])) {
-            //添加标签
-            var tag = HistoryTag(rule["name"], history.id);
-            tagService.add(tag);
-          }
-        }
-        break;
-      case HistoryContentType.sms:
-        //添加标签
-        tagService.add(HistoryTag(TranslationKey.sms.tr, history.id));
-        break;
-      case HistoryContentType.notification:
-        //添加通知标签
-        tagService.add(HistoryTag(TranslationKey.notification.tr, history.id));
-        break;
-      default:
+    // 标签添加完成后推送到服务器（仅当 shouldSync=true 且是本机新增的记录）
+    if (shouldSync && history.devId == appConfig.device.guid) {
+      final tags = tagService.getTagList(history.id).toList();
+      historyServerSyncIntegration.onHistoryAdded(history, tags);
     }
+
     return cnt;
   }
 

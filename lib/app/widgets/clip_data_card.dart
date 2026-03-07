@@ -198,6 +198,7 @@ class _ClipDataCardState extends State<ClipDataCard> with TickerProviderStateMix
                         ),
                       ),
                 ClipSimpleDataFooter(clip: widget.clip),
+                _ServerExpireBadge(clip: widget.clip),
               ],
             ),
           ),
@@ -380,5 +381,42 @@ class _ClipDataCardState extends State<ClipDataCard> with TickerProviderStateMix
       dbService.opRecordDao.addAndNotify(opRecord);
       return true;
     });
+  }
+}
+
+/// 服务器图片到期倒计时提示徽章
+/// 仅当 clip 是图片且 serverExpireAt 不为空时显示
+class _ServerExpireBadge extends StatelessWidget {
+  final ClipData clip;
+  const _ServerExpireBadge({required this.clip});
+
+  @override
+  Widget build(BuildContext context) {
+    final expireStr = clip.data.serverExpireAt;
+    if (!clip.isImage || expireStr == null || expireStr.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final expireAt = DateTime.tryParse(expireStr);
+    if (expireAt == null) return const SizedBox.shrink();
+
+    final daysLeft = expireAt.difference(DateTime.now()).inDays;
+    final label = daysLeft <= 0
+        ? "图片已从服务器删除"
+        : "服务器图片将在 $daysLeft 天后删除";
+    final color = daysLeft <= 3 ? Colors.red : Colors.orange;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
+        children: [
+          Icon(Icons.cloud_off_outlined, size: 12, color: color),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(fontSize: 11, color: color),
+          ),
+        ],
+      ),
+    );
   }
 }

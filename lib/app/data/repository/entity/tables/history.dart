@@ -43,6 +43,12 @@ class History implements Comparable {
   ///来源
   String? source;
 
+  ///服务器图片到期时间（ISO8601字符串），仅图片类型在中转模式下有值
+  String? serverExpireAt;
+
+  ///服务器端条目 ID，用于删除时同步到服务器
+  String? serverItemId;
+
   History({
     required this.id,
     required this.uid,
@@ -55,6 +61,8 @@ class History implements Comparable {
     this.sync = false,
     this.updateTime,
     this.source,
+    this.serverExpireAt,
+    this.serverItemId,
   });
 
   @override
@@ -82,6 +90,8 @@ class History implements Comparable {
     this.size = 0,
     this.updateTime,
     this.source,
+    this.serverExpireAt,
+    this.serverItemId,
   });
 
   static History fromJson(Map<String, dynamic> map) {
@@ -106,6 +116,8 @@ class History implements Comparable {
       sync: sync,
       updateTime: map.containsKey("updateTime") ? map["updateTime"] : null,
       source: map.containsKey("source") ? map["source"] : null,
+      serverExpireAt: map.containsKey("serverExpireAt") ? map["serverExpireAt"] : null,
+      serverItemId: map.containsKey("serverItemId") ? map["serverItemId"] : null,
     );
   }
 
@@ -130,6 +142,8 @@ class History implements Comparable {
       "size": size,
       "updateTime": updateTime,
       "source": source,
+      "serverExpireAt": serverExpireAt,
+      "serverItemId": serverItemId,
     };
   }
 

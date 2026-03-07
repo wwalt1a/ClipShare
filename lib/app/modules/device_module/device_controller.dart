@@ -307,16 +307,8 @@ class DeviceController extends GetxController with GetSingleTickerProviderStateM
     pairedList.removeWhere(
       (element) => element.dev?.guid == dev.guid,
     );
-    forgetDev = forgetDev?.copyWith(isPaired: false);
-    if (forgetDev?.isConnected ?? false) {
-      // 已经连接，minVersion必定不空
-      onConnected(
-        dev,
-        forgetDev!.minVersion!,
-        forgetDev.version!,
-        forgetDev.protocol,
-      );
-    }
+    // 强制刷新列表
+    pairedList.refresh();
     _notifyOnlineDevicesWindow();
   }
 

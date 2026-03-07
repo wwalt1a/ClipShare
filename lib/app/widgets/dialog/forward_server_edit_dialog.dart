@@ -34,6 +34,7 @@ class _ForwardServerEditDialogState extends State<ForwardServerEditDialog> {
   final tag = "ForwardServerEditDialog";
   final hostEditor = TextEditingController();
   final portEditor = TextEditingController();
+  final apiBaseUrlEditor = TextEditingController();
   final keyEditor = TextEditingController();
   String? hostErrText;
   String? portErrText;
@@ -51,6 +52,7 @@ class _ForwardServerEditDialogState extends State<ForwardServerEditDialog> {
   void reset(ForwardServerConfig config) {
     hostEditor.text = config.host;
     portEditor.text = config.port.toString();
+    apiBaseUrlEditor.text = config.apiBaseUrl;
     if (config.key != null) {
       keyEditor.text = config.key!;
       useKey = true;
@@ -313,6 +315,24 @@ class _ForwardServerEditDialogState extends State<ForwardServerEditDialog> {
                   ),
                 ],
               ),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      enabled: !detecting,
+                      controller: apiBaseUrlEditor,
+                      keyboardType: TextInputType.url,
+                      decoration: const InputDecoration(
+                        labelText: "API 地址（可选）",
+                        hintText: "https://api.yourdomain.com:8888",
+                        helperText: "走反代时填写，留空则使用 http://host",
+                        helperMaxLines: 2,
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
               Container(
                 margin: const EdgeInsets.only(bottom: 8),
                 child: CheckboxListTile(
@@ -399,6 +419,7 @@ class _ForwardServerEditDialogState extends State<ForwardServerEditDialog> {
                               ForwardServerConfig(
                                 host: hostEditor.text,
                                 port: portEditor.text.toInt(),
+                                apiBaseUrl: apiBaseUrlEditor.text.trim(),
                                 key: useKey ? keyEditor.text : null,
                               ),
                             );

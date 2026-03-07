@@ -20,8 +20,11 @@ import 'package:clipshare/app/services/clipboard_source_service.dart';
 import 'package:clipshare/app/services/config_service.dart';
 import 'package:clipshare/app/services/db_service.dart';
 import 'package:clipshare/app/services/device_service.dart';
+import 'package:clipshare/app/services/tag_service.dart';
 import 'package:clipshare/app/services/transport/connection_registry_service.dart';
 import 'package:clipshare/app/services/transport/socket_service.dart';
+import 'package:clipshare/app/services/transport/server_sync_service.dart';
+import 'package:clipshare/app/services/transport/history_server_sync_integration.dart';
 import 'package:clipshare/app/utils/cron_util.dart';
 import 'package:clipshare/app/utils/extensions/list_extension.dart';
 import 'package:clipshare/app/utils/extensions/number_extension.dart';
@@ -30,6 +33,7 @@ import 'package:clipshare/app/utils/global.dart';
 import 'package:clipshare/app/utils/log.dart';
 import 'package:clipshare/app/widgets/radio_group.dart';
 import 'package:clipshare/app/widgets/dialog/single_select_dialog.dart';
+import 'package:clipshare/app/listeners/tag_changed_listener.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -38,13 +42,14 @@ import '../../widgets/empty_content.dart';
  * GetX Template Generator - fb.com/htngu.99
  * */
 
-class CleanDataController extends GetxController implements DeviceRemoveListener, DevAliveListener {
+class CleanDataController extends GetxController implements DeviceRemoveListener, DevAliveListener, TagChangedListener {
   final dbService = Get.find<DbService>();
   final connRegService = Get.find<ConnectionRegistryService>();
   final appConfig = Get.find<ConfigService>();
   final devService = Get.find<DeviceService>();
   final sktService = Get.find<SocketService>();
   final sourceService = Get.find<ClipboardSourceService>();
+  final tagService = Get.find<TagService>();
   final logTag = "CleanDataController";
   final allDevices = <Device>{}.obs;
   final allTags = <String>{}.obs;
@@ -54,6 +59,7 @@ class CleanDataController extends GetxController implements DeviceRemoveListener
   final selectedTags = <String>{}.obs;
   final selectedSources = <String>{}.obs;
   final selectedContentTypes = <HistoryContentType>{}.obs;
+  final protectedTags = <String>{}.obs; // 受保护的标签
 
   //endregion
 
@@ -98,6 +104,7 @@ class CleanDataController extends GetxController implements DeviceRemoveListener
     super.onReady();
     devService.addDevRemoveListener(this);
     connRegService.addDevAliveListener(this);
+    tagService.addListener(this);
     final cfg = appConfig.cleanDataConfig;
     if (cfg != null) {
       selectedDevs.addAll(cfg.devIds);
@@ -110,6 +117,7 @@ class CleanDataController extends GetxController implements DeviceRemoveListener
       useDaysFilter.value = cfg.saveDays != null;
       saveDays.value = cfg.saveDays ?? 0;
       saveDaysController.text = saveDays.value.toString();
+      protectedTags.addAll(cfg.protectedTags);
     }
     loadData();
   }
@@ -118,17 +126,23 @@ class CleanDataController extends GetxController implements DeviceRemoveListener
   void onClose() {
     devService.removeDevRemoveListener(this);
     connRegService.removeDevAliveListener(this);
+    tagService.removeListener(this);
   }
 
   ///加载搜索条件
   Future<void> loadData() async {
     //加载所有标签名
-    allTags.value = <String>{}..addAll(await dbService.historyTagDao.getAllTagNames());
+    final tagNames = await dbService.historyTagDao.getAllTagNames();
+    allTags.clear();
+    allTags.addAll(tagNames);
+
     //加载所有设备名
     var tmpLst = await dbService.deviceDao.getAllDevices(appConfig.userId);
     print("load data");
     tmpLst.add(appConfig.device);
-    allDevices.value = <Device>{}..addAll(tmpLst);
+    allDevices.clear();
+    allDevices.addAll(tmpLst);
+
     updateNextExecTime();
   }
 
@@ -218,53 +232,56 @@ class CleanDataController extends GetxController implements DeviceRemoveListener
       startTime = '1970-01-01';
       endTime = now.add(Duration(days: -1 * saveDays.value)).format('yyyy-MM-dd');
     }
-    deleteCascade(
-          uid: appConfig.userId,
-          types: selectedContentTypes.map((item) => item.value).toList(),
-          tags: selectedTags.toList(),
-          devIds: selectedDevs.toList(),
-          appIds: selectedSources.toList(),
-          startTime: startTime,
-          endTime: endTime,
-          removeFiles: removeFiles.value,
-          saveTop: saveTopData.value,
-        )
-        .then((cnt) async {
-          if (!mute) {
-            //关闭加载弹窗
-            dialog?.close();
-            Global.showSnackBarSuc(context: Get.context!, text: "${TranslationKey.deleteSuccess.tr}: $cnt ${TranslationKey.deleteItemsUnit.tr}");
-          }
-          refreshHistoryPage();
-          final devs = selectedDevs.toList();
-          for (var devId in devs) {
-            //本机跳过
-            if (devId == appConfig.device.guid) {
-              return;
-            }
-            final cnt = await dbService.historyDao.countByDevId(devId, appConfig.userId);
-            if (cnt > 0) {
-              //数据未清空，跳过
-              return;
-            }
-            //如果设备离线并未配对则删除，否则不能删
-            if (sktService.isOnline(devId, true)) {
-              print("is online");
-              return;
-            }
-            var success = await devService.remove(devId);
-            print("delete device success $success");
-            if (success) {}
-          }
-        })
-        .catchError((err, stack) {
-          Log.error(logTag, "$err: $stack");
-          if (!mute) {
-            //关闭加载弹窗
-            Get.back();
-            Global.showSnackBarWarn(context: Get.context!, text: TranslationKey.deletionFailed.tr);
-          }
-        });
+
+    try {
+      final cnt = await deleteCascade(
+        uid: appConfig.userId,
+        types: selectedContentTypes.map((item) => item.value).toList(),
+        tags: selectedTags.toList(),
+        devIds: selectedDevs.toList(),
+        appIds: selectedSources.toList(),
+        startTime: startTime,
+        endTime: endTime,
+        removeFiles: removeFiles.value,
+        saveTop: saveTopData.value,
+        protectedTags: protectedTags.toList(),
+      );
+
+      if (!mute) {
+        //关闭加载弹窗
+        dialog?.close();
+        Global.showSnackBarSuc(context: Get.context!, text: "${TranslationKey.deleteSuccess.tr}: $cnt ${TranslationKey.deleteItemsUnit.tr}");
+      }
+
+      refreshHistoryPage();
+
+      final devs = selectedDevs.toList();
+      for (var devId in devs) {
+        //本机跳过
+        if (devId == appConfig.device.guid) {
+          continue;
+        }
+        final cnt = await dbService.historyDao.countByDevId(devId, appConfig.userId);
+        if (cnt > 0) {
+          //数据未清空，跳过
+          continue;
+        }
+        //如果设备离线并未配对则删除，否则不能删
+        if (sktService.isOnline(devId, true)) {
+          print("is online");
+          continue;
+        }
+        var success = await devService.remove(devId);
+        print("delete device success $success");
+      }
+    } catch (err, stack) {
+      Log.error(logTag, "$err", stack);
+      if (!mute) {
+        //关闭加载弹窗
+        Get.back();
+        Global.showSnackBarWarn(context: Get.context!, text: TranslationKey.deletionFailed.tr);
+      }
+    }
   }
 
   ///清理设备同步记录
@@ -334,6 +351,7 @@ class CleanDataController extends GetxController implements DeviceRemoveListener
               saveTopData: saveTopData.value,
               removeFile: removeFiles.value,
               saveDays: useDaysFilter.value ? saveDays.value : null,
+              protectedTags: protectedTags.toList(),
             ),
           )
           .then((_) {
@@ -352,6 +370,7 @@ class CleanDataController extends GetxController implements DeviceRemoveListener
               saveTopData: saveTopData.value,
               removeFiles: removeFiles.value,
               saveDays: useDaysFilter.value ? saveDays.value : null,
+              protectedTags: protectedTags.toList(),
             ),
           )
           .then((_) {
@@ -393,6 +412,30 @@ class CleanDataController extends GetxController implements DeviceRemoveListener
         });
   }
 
+  ///保存受保护标签配置（立即持久化）
+  void saveProtectedTagsConfig() {
+    final cfg = appConfig.cleanDataConfig;
+    if (cfg == null) {
+      // 如果没有配置，创建一个新的
+      appConfig.setCleanDataConfig(
+        CleanDataConfig(
+          tags: selectedTags.toList(),
+          devIds: selectedDevs.toList(),
+          contentTypes: selectedContentTypes.toList(),
+          saveTopData: saveTopData.value,
+          removeFiles: removeFiles.value,
+          protectedTags: protectedTags.toList(),
+        ),
+      );
+    } else {
+      // 更新现有配置
+      appConfig.setCleanDataConfig(
+        cfg.copyWith(protectedTags: protectedTags.toList()),
+      );
+    }
+    Log.info(logTag, "saveProtectedTagsConfig: 已保存受保护标签 ${protectedTags.toList()}");
+  }
+
   ///级联删除
   Future<int> deleteCascade({
     required int uid,
@@ -404,6 +447,7 @@ class CleanDataController extends GetxController implements DeviceRemoveListener
     String? endTime,
     bool removeFiles = false,
     bool saveTop = false,
+    List<String>? protectedTags,
   }) async {
     final histories = await dbService.historyDao.getHistoriesWithFileContent(
       uid,
@@ -414,11 +458,17 @@ class CleanDataController extends GetxController implements DeviceRemoveListener
       startTime ?? "",
       endTime ?? "",
       saveTop,
+      protectedTags ?? [],
     );
     //防止在in中id过多，进行分部处理
     final parts = histories.partition(1000);
     for (var part in parts) {
       final ids = part.map((item) => item.id).toList().cast<int>();
+      // 收集服务器条目 ID，用于同步删除到服务器
+      final serverIds = part
+          .where((item) => item.serverItemId != null)
+          .map((item) => item.serverItemId!)
+          .toList();
       //先删除操作记录
       await dbService.opRecordDao.deleteByDataIds(ids.map((item) => item.toString()).toList());
       //删除同步记录
@@ -429,6 +479,15 @@ class CleanDataController extends GetxController implements DeviceRemoveListener
       await dbService.historyDao.deleteByIds(ids, uid);
       //移除未使用的剪贴板来源信息
       await sourceService.removeNotUsed();
+      // 新的队列同步：批量添加删除操作到队列
+      if (serverIds.isNotEmpty && Get.isRegistered<HistoryServerSyncIntegration>()) {
+        final syncIntegration = Get.find<HistoryServerSyncIntegration>();
+        for (int i = 0; i < ids.length; i++) {
+          if (i < serverIds.length) {
+            await syncIntegration.onHistoryDeleted(ids[i], serverIds[i]);
+          }
+        }
+      }
       //删除文件
       if (removeFiles) {
         //提取所有文件路径
@@ -456,6 +515,8 @@ class CleanDataController extends GetxController implements DeviceRemoveListener
     final searchController = Get.find<search_module.SearchController>();
     historyController.refreshData();
     searchController.refreshData();
+    // 重新加载标签和设备列表
+    loadData();
   }
 
   ///初始化自动清理定时器
@@ -511,7 +572,9 @@ class CleanDataController extends GetxController implements DeviceRemoveListener
 
   @override
   void onForget(DevInfo dev, int uid) {
-    return;
+    // 设备取消配对时，从列表中移除
+    allDevices.removeWhere((item) => item.guid == dev.guid);
+    selectedDevs.remove(dev.guid);
   }
 
   //endregion
@@ -524,5 +587,19 @@ class CleanDataController extends GetxController implements DeviceRemoveListener
     print("on remove $devId");
     allDevices.removeWhere((item) => item.guid == devId);
     selectedDevs.remove(devId);
+  }
+
+  @override
+  void onDistinctAdd(String tagName) {
+    // 新标签添加时，添加到列表
+    allTags.add(tagName);
+  }
+
+  @override
+  void onDistinctRemove(String tagName) {
+    // 标签完全删除时（没有任何历史记录使用），从列表中移除
+    allTags.remove(tagName);
+    selectedTags.remove(tagName);
+    protectedTags.remove(tagName);
   }
 }

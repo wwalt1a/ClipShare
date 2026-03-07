@@ -15,6 +15,10 @@ import 'package:clipshare/app/data/models/dev_socket.dart';
 import 'package:clipshare/app/data/models/message_data.dart';
 import 'package:clipshare/app/data/models/version.dart';
 import 'package:clipshare/app/data/repository/entity/tables/app_info.dart';
+import 'package:clipshare/app/data/repository/entity/tables/history.dart';
+import 'package:clipshare/app/data/repository/entity/tables/history_tag.dart';
+import 'package:clipshare/app/modules/history_module/history_controller.dart';
+import 'package:clipshare/app/services/tag_service.dart';
 import 'package:clipshare/app/handlers/dev_pairing_handler.dart';
 import 'package:clipshare/app/handlers/socket/forward_socket_client.dart';
 import 'package:clipshare/app/handlers/socket/secure_socket_client.dart';
@@ -43,6 +47,7 @@ import 'package:clipshare/app/utils/extensions/string_extension.dart';
 import 'package:clipshare/app/utils/extensions/time_extension.dart';
 import 'package:clipshare/app/utils/global.dart';
 import 'package:clipshare/app/utils/log.dart';
+import 'package:clipshare/app/services/transport/history_server_sync_integration.dart';
 import 'package:collection/collection.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
@@ -331,10 +336,7 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
       return;
     }
     if (appConfig.currentNetWorkType.value == ConnectivityResult.none) {
-      if (_autoConnForwardServer) {
-        Log.debug(tag, "中转连接取消重连(无网络)");
-      }
-      _autoConnForwardServer = false;
+      Log.debug(tag, "中转连接取消重连(无网络)");
       return;
     }
     if (!appConfig.enableForward) return;
@@ -380,6 +382,10 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
             connData["key"] = key;
           }
           self.send(connData);
+          // 连接成功后触发一次同步
+          if (Get.isRegistered<HistoryServerSyncIntegration>()) {
+            Get.find<HistoryServerSyncIntegration>().periodicSync();
+          }
           if (startDiscovery) {
             Future.delayed(1.s, () async {
               final list = await _forwardDiscovering();
@@ -452,6 +458,12 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
     switch (type) {
       case ForwardMsgType.ping:
         _lastForwardServerPingTime = DateTime.now();
+        break;
+      case ForwardMsgType.syncNotify:
+        // 服务器通知有新数据，立即触发一次同步拉取
+        if (Get.isRegistered<HistoryServerSyncIntegration>()) {
+          Get.find<HistoryServerSyncIntegration>().periodicSync();
+        }
         break;
       case ForwardMsgType.fileSyncNotAllowed:
         Global.showTipsDialog(
@@ -729,6 +741,12 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
           Get.back();
           _pairing = false;
         }
+        // 配对成功 - 不再自动同步密码，用户需手动在两个设备上设置相同密码
+        break;
+
+      /// 接收对方发来的同步密码（已废弃 - 改为手动输入）
+      case MsgType.syncKey:
+        Log.info(tag, "收到同步密码消息，但已改为手动输入模式，忽略此消息");
         break;
 
       ///取消配对
@@ -784,6 +802,10 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
 
   ///数据同步处理
   void _onSyncMsg(MessageData msg) {
+    if (appConfig.isServerOnlyMode) {
+      Log.debug(tag, "服务器专属模式，跳过P2P数据同步");
+      return;
+    }
     Module module = Module.getValue(msg.data["module"]);
     Log.debug(tag, "module ${module.moduleName}");
     //筛选某个模块的同步处理器
@@ -814,6 +836,10 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
     bool scan = true,
     bool manual = false,
   }) async {
+    if (appConfig.isServerOnlyMode) {
+      Log.debug(tag, "服务器专属模式，跳过P2P设备发现");
+      return;
+    }
     if (_discovering) {
       Log.debug(tag, "正在发现设备");
       return;
@@ -1236,6 +1262,10 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
   }
 
   Future<void> reqMissingData([String? devId]) async {
+    if (appConfig.isServerOnlyMode) {
+      Log.debug(tag, "服务器专属模式，跳过P2P缺失数据请求");
+      return;
+    }
     final sourceService = Get.find<ClipboardSourceService>();
     if (devId != null) {
       final devSkt = _devSockets[devId];

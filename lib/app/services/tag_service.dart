@@ -1,20 +1,36 @@
+import 'dart:convert';
 import 'package:clipshare/app/data/enums/module.dart';
 import 'package:clipshare/app/data/enums/op_method.dart';
 import 'package:clipshare/app/data/repository/entity/tables/history_tag.dart';
 import 'package:clipshare/app/data/repository/entity/tables/operation_record.dart';
 import 'package:clipshare/app/services/db_service.dart';
+import 'package:clipshare/app/services/transport/history_server_sync_integration.dart';
 import 'package:clipshare/app/utils/constants.dart';
 import 'package:get/get.dart';
 
+import 'package:clipshare/app/data/enums/msg_type.dart';
+import 'package:clipshare/app/data/models/message_data.dart';
+import 'package:clipshare/app/data/repository/entity/tables/device.dart';
+import 'package:clipshare/app/data/repository/entity/tables/operation_sync.dart';
+import 'package:clipshare/app/handlers/sync/abstract_data_sender.dart';
+import 'package:clipshare/app/listeners/sync_listener.dart';
+import 'package:clipshare/app/services/config_service.dart';
+import 'package:clipshare/app/services/transport/socket_service.dart';
 import '../listeners/tag_changed_listener.dart';
 
-class TagService extends GetxService {
+class TagService extends GetxService implements SyncListener {
   final _dbService = Get.find<DbService>();
+  final _appConfig = Get.find<ConfigService>();
+  late final HistoryServerSyncIntegration _serverSyncIntegration;
   final _tags = <int, Set<String>>{}.obs;
   final _tagNameCntMap = <String, int>{};
   final _listeners = List<TagChangedListener>.empty(growable: true);
 
   Future<TagService> init() async {
+    // 延迟获取，因为可能还未注册
+    if (Get.isRegistered<HistoryServerSyncIntegration>()) {
+      _serverSyncIntegration = Get.find<HistoryServerSyncIntegration>();
+    }
     final lst = await _dbService.historyTagDao.getAll();
     for (var tag in lst) {
       if (_tags.containsKey(tag.hisId)) {
@@ -28,8 +44,10 @@ class TagService extends GetxService {
         _tagNameCntMap[tag.tagName] = 1;
       }
     }
+    DataSender.addSyncListener(Module.tag, this);
     return this;
   }
+
 
   Set<String> getTagList(int hisId) {
     if (_tags.containsKey(hisId)) {
@@ -48,30 +66,59 @@ class TagService extends GetxService {
         _tags[tag.hisId] = Set.from(_tags[tag.hisId]!..remove(tag.tagName));
       }
     }
-    var opRecord = OperationRecord.fromSimple(
-      Module.tag,
-      OpMethod.delete,
-      tag.id.toString(),
-    );
-    //添加操作记录
-    _dbService.opRecordDao.addAndNotify(opRecord);
+
+    if (notify) {
+      var opRecord = OperationRecord.fromSimple(
+        Module.tag,
+        OpMethod.delete,
+        tag.id.toString(),
+      );
+      //添加操作记录
+      _dbService.opRecordDao.addAndNotify(opRecord);
+    }
+
     if (_tagNameCntMap[tag.tagName] == 1) {
       _tagNameCntMap.remove(tag.tagName);
       _onChanged(tag.tagName, true);
     } else {
       _tagNameCntMap[tag.tagName] = _tagNameCntMap[tag.tagName]! - 1;
     }
+
+    // 服务器同步集成：标签删除
+    if (notify && Get.isRegistered<HistoryServerSyncIntegration>()) {
+      final history = await _dbService.historyDao.getById(tag.hisId);
+      if (history != null) {
+        _serverSyncIntegration.onTagRemoved(tag.hisId, history.serverItemId, tag.tagName);
+      }
+    }
   }
 
   Future<bool> _add(HistoryTag tag, [bool notify = true]) async {
     var hasTag = _tags.containsKey(tag.hisId) ? _tags[tag.hisId]!.contains(tag.tagName) : false;
-    var res = false;
     if (hasTag) return false;
+
+    // 添加到数据库
+    var res = await _dbService.historyTagDao.add(tag) > 0;
+    if (!res) {
+      return false;
+    }
+
+    // 更新本地缓存
+    if (_tags.containsKey(tag.hisId)) {
+      _tags[tag.hisId] = Set.from(_tags[tag.hisId]!)..add(tag.tagName);
+    } else {
+      _tags[tag.hisId] = <String>{tag.tagName};
+    }
+
+    if (_tagNameCntMap.containsKey(tag.tagName)) {
+      _tagNameCntMap[tag.tagName] = _tagNameCntMap[tag.tagName]! + 1;
+    } else {
+      _tagNameCntMap[tag.tagName] = 1;
+      _onChanged(tag.tagName, false);
+    }
+
+    // 仅在 notify=true 时添加操作记录和触发服务器同步
     if (notify) {
-      res = await _dbService.historyTagDao.add(tag) > 0;
-      if (!res) {
-        return false;
-      }
       var opRecord = OperationRecord.fromSimple(
         Module.tag,
         OpMethod.add,
@@ -79,20 +126,16 @@ class TagService extends GetxService {
       );
       //添加操作记录
       _dbService.opRecordDao.addAndNotify(opRecord);
-      if (_tagNameCntMap.containsKey(tag.tagName)) {
-        _tagNameCntMap[tag.tagName] = _tagNameCntMap[tag.tagName]! + 1;
-      } else {
-        _tagNameCntMap[tag.tagName] = 1;
-        _onChanged(tag.tagName, false);
+
+      // 服务器同步集成：标签添加
+      if (Get.isRegistered<HistoryServerSyncIntegration>()) {
+        final history = await _dbService.historyDao.getById(tag.hisId);
+        if (history != null) {
+          _serverSyncIntegration.onTagAdded(tag.hisId, history.serverItemId, tag.tagName);
+        }
       }
     }
-    if (!notify || res) {
-      if (_tags.containsKey(tag.hisId)) {
-        _tags[tag.hisId] = (_tags[tag.hisId]!..add(tag.tagName));
-      } else {
-        _tags[tag.hisId] = <String>{}..add(tag.tagName);
-      }
-    }
+
     return res;
   }
 
@@ -139,5 +182,66 @@ class TagService extends GetxService {
 
   void removeListener(TagChangedListener listener) {
     _listeners.remove(listener);
+  }
+
+  @override
+  Future ackSync(MessageData msg) async {
+    var send = msg.send;
+    var data = msg.data;
+    var opSync = OperationSync(
+      opId: data["id"],
+      devId: send.guid,
+      uid: _appConfig.userId,
+    );
+    await _dbService.opSyncDao.add(opSync);
+  }
+
+  @override
+  Future<void> onSync(MessageData msg) async {
+    var sender = msg.send;
+    final data = msg.data["data"];
+    Map<dynamic, dynamic> tagMap = data is String ? jsonDecode(data) : data;
+    
+    var opRecord = OperationRecord.fromJson(msg.data);
+    var historyTag = HistoryTag.fromJson(tagMap.cast<String, dynamic>());
+    
+    if (opRecord.method == OpMethod.add || opRecord.method == OpMethod.update) {
+      await _add(historyTag, false);
+    } else if (opRecord.method == OpMethod.delete) {
+      await _remove(historyTag, false);
+    }
+    
+    //Add to local op records
+    await _dbService.opRecordDao.add(opRecord.copyWith(data: historyTag.id.toString()));
+    
+    //Send ACK
+    final socketService = Get.find<SocketService>();
+    socketService.sendData(sender, MsgType.ackSync, {
+      "id": opRecord.id,
+      "hisId": historyTag.id,
+      "module": Module.tag.moduleName,
+    });
+  }
+
+  @override
+  Future<void> onStorageSync(Map<String, dynamic> map, Device sender, bool loadingMissingData) async {
+    final data = map["data"];
+    Map<dynamic, dynamic> tagMap = data is String ? jsonDecode(data) : data;
+    
+    var opRecord = OperationRecord.fromJson(map);
+    var historyTag = HistoryTag.fromJson(tagMap.cast<String, dynamic>());
+    
+    if (opRecord.method == OpMethod.add || opRecord.method == OpMethod.update) {
+      await _add(historyTag, false);
+    } else if (opRecord.method == OpMethod.delete) {
+      await _remove(historyTag, false);
+    }
+    
+    await _dbService.opRecordDao.add(
+      opRecord.copyWith(
+        data: historyTag.id.toString(),
+        storageSync: true,
+      ),
+    );
   }
 }

@@ -7,6 +7,7 @@ import 'package:clipshare/app/data/repository/entity/tables/operation_record.dar
 import 'package:clipshare/app/services/clipboard_source_service.dart';
 import 'package:clipshare/app/services/config_service.dart';
 import 'package:clipshare/app/services/db_service.dart';
+import 'package:clipshare/app/services/transport/server_sync_service.dart';
 import 'package:floor/floor.dart';
 import 'package:get/get.dart';
 
@@ -20,6 +21,14 @@ abstract class HistoryDao {
   ///获取最新记录
   @Query("select * from history where uid = :uid order by id desc limit 1")
   Future<History?> getLatestLocalClip(int uid);
+
+  /// 根据 serverItemId 查询记录
+  @Query("select * from history where serverItemId = :serverItemId limit 1")
+  Future<History?> getByServerItemId(String serverItemId);
+
+  /// 根据 content 和 devId 查询记录（用于防止P2P与服务器路径重复添加）
+  @Query("select * from history where content = :content and devId = :devId limit 1")
+  Future<History?> getByContentAndDevId(String content, String devId);
 
   /// 根据条件查询，一次查 100 条，置顶优先，id 降序
   @Query("""
@@ -85,6 +94,11 @@ abstract class HistoryDao {
       FROM HistoryTag
       WHERE tagName IN (:tags)
     ))
+    AND (length(null in (:protectedTags)) = 1 OR id NOT IN (
+      SELECT DISTINCT hisId
+      FROM HistoryTag
+      WHERE tagName IN (:protectedTags)
+    ))
   """;
 
   ///根据过滤器统计数量
@@ -98,6 +112,7 @@ abstract class HistoryDao {
     String startTime,
     String endTime,
     bool saveTop,
+    List<String> protectedTags,
   );
 
   ///根据过滤器获取历史数据
@@ -111,11 +126,12 @@ abstract class HistoryDao {
     String startTime,
     String endTime,
     bool saveTop,
+    List<String> protectedTags,
   );
 
   ///根据设备id统计数量
   Future<int> countByDevId(String devId, int uid) {
-    return count(uid, [], [], [devId], [], "", "", false).then((res) => res ?? 0);
+    return count(uid, [], [], [devId], [], "", "", false, []).then((res) => res ?? 0);
   }
 
   ///更新历史记录来源
@@ -210,6 +226,14 @@ abstract class HistoryDao {
 
   @update
   Future<int> updateHistory(History history);
+
+  ///更新服务器同步字段（推送到服务器后记录 serverItemId 和 serverExpireAt）
+  Future<void> updateServerFields(int id, String? serverItemId, String? serverExpireAt) async {
+    await dbService.dbExecutor.rawUpdate(
+      'UPDATE History SET serverItemId = ?, serverExpireAt = ? WHERE id = ?',
+      [serverItemId, serverExpireAt, id],
+    );
+  }
 
   ///获取所有文件
   @Query(

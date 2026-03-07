@@ -8,6 +8,7 @@ import 'package:clipshare/app/data/repository/dao/history_dao.dart';
 import 'package:clipshare/app/data/repository/dao/history_tag_dao.dart';
 import 'package:clipshare/app/data/repository/dao/operation_record_dao.dart';
 import 'package:clipshare/app/data/repository/dao/operation_sync_dao.dart';
+import 'package:clipshare/app/data/repository/dao/server_operation_queue_dao.dart';
 import 'package:clipshare/app/data/repository/dao/user_dao.dart';
 import 'package:clipshare/app/data/repository/entity/tables/app_info.dart';
 import 'package:clipshare/app/data/repository/entity/tables/config.dart';
@@ -16,6 +17,7 @@ import 'package:clipshare/app/data/repository/entity/tables/history.dart';
 import 'package:clipshare/app/data/repository/entity/tables/history_tag.dart';
 import 'package:clipshare/app/data/repository/entity/tables/operation_record.dart';
 import 'package:clipshare/app/data/repository/entity/tables/operation_sync.dart';
+import 'package:clipshare/app/data/repository/entity/tables/server_operation_queue.dart';
 import 'package:clipshare/app/data/repository/entity/tables/user.dart';
 import 'package:clipshare/app/data/repository/entity/views/v_history_tag_hold.dart';
 import 'package:clipshare/app/utils/constants.dart';
@@ -41,6 +43,7 @@ const tables = [
   HistoryTag,
   OperationRecord,
   AppInfo,
+  ServerOperationQueue,
 ];
 const views = [VHistoryTagHold];
 
@@ -54,7 +57,7 @@ const views = [VHistoryTagHold];
 ///
 /// 2. 直接执行 /scripts/db_gen.bat 一键完成
 @Database(
-  version: 8,
+  version: 11,
   entities: tables,
   views: views,
 )
@@ -74,6 +77,8 @@ abstract class _AppDb extends FloorDatabase {
   OperationRecordDao get operationRecordDao;
 
   AppInfoDao get appInfoDao;
+
+  ServerOperationQueueDao get serverOperationQueueDao;
 }
 
 class DbService extends GetxService {
@@ -95,6 +100,8 @@ class DbService extends GetxService {
   OperationRecordDao get opRecordDao => _db.operationRecordDao;
 
   AppInfoDao get appInfoDao => _db.appInfoDao;
+
+  ServerOperationQueueDao get serverOpQueueDao => _db.serverOperationQueueDao;
 
   final tag = "DbService";
 
@@ -128,6 +135,9 @@ class DbService extends GetxService {
       migration5to6,
       migration6to7,
       migration7to8,
+      migration8to9,
+      migration9to10,
+      migration10to11,
     ]).build();
     version = await _db.database.database.getVersion();
     return this;
@@ -233,10 +243,47 @@ class DbService extends GetxService {
   });
 
   ///v1.4.3 新增字段记录内网地址 7 -> 8
-  ///为历史表增加设备id和来源字段的索引，避免删除速度过慢
   final migration7to8 = Migration(7, 8, (database) async {
     if (!await hasColumnInTable(database, 'Device', 'internalAddress')) {
       await database.execute("ALTER TABLE `Device` ADD COLUMN `internalAddress` TEXT;");
     }
+  });
+
+  ///数据库版本 8 -> 9
+  ///History 表新增服务器图片到期时间字段（serverExpireAt）
+  final migration8to9 = Migration(8, 9, (database) async {
+    if (!await hasColumnInTable(database, 'History', 'serverExpireAt')) {
+      await database.execute('ALTER TABLE History ADD COLUMN serverExpireAt TEXT');
+    }
+  });
+
+  ///数据库版本 9 -> 10
+  ///History 表新增服务器条目 ID 字段（serverItemId）
+  final migration9to10 = Migration(9, 10, (database) async {
+    if (!await hasColumnInTable(database, 'History', 'serverItemId')) {
+      await database.execute('ALTER TABLE History ADD COLUMN serverItemId TEXT');
+    }
+  });
+
+  ///数据库版本 10 -> 11
+  ///新增 ServerOperationQueue 表，用于服务器同步操作队列
+  final migration10to11 = Migration(10, 11, (database) async {
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS ServerOperationQueue (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        type TEXT NOT NULL,
+        itemId INTEGER NOT NULL,
+        serverItemId TEXT,
+        tagName TEXT,
+        content TEXT,
+        fileId TEXT,
+        itemType TEXT,
+        createdAt INTEGER NOT NULL,
+        synced INTEGER NOT NULL DEFAULT 0,
+        invalid INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await database.execute('CREATE INDEX IF NOT EXISTS index_ServerOperationQueue_synced ON ServerOperationQueue (synced)');
+    await database.execute('CREATE INDEX IF NOT EXISTS index_ServerOperationQueue_itemId ON ServerOperationQueue (itemId)');
   });
 }

@@ -69,4 +69,6 @@ enum ConfigKey {
   recopyOnScreenUnlocked,
   excludeFormat,
   enablePIP,
+  syncPassword,
+  lastServerPullTime,
 }
