@@ -173,15 +173,20 @@ class ServerQueueSyncService extends GetxService {
             // 标记队列操作为已同步
             final ids = operations.map((o) => o.id!).toList();
             await dbService.serverOpQueueDao.markAllAsSynced(ids);
-            // 更新 addItem 操作对应的本地历史记录 sync=true（数据库+内存）
+            // 更新 addItem 操作对应的本地历史记录 sync=true 和 serverItemId（数据库+内存）
             if (Get.isRegistered<HistoryController>()) {
               final historyController = Get.find<HistoryController>();
               for (final op in operations) {
                 if (op.type == 'addItem') {
+                  final serverItemId = op.serverItemId ?? op.itemId.toString();
                   await dbService.historyDao.setSync(op.itemId, true);
+                  await dbService.historyDao.updateServerFields(op.itemId, serverItemId, null);
                   historyController.updateData(
                     (his) => his.id == op.itemId,
-                    (his) => his.sync = true,
+                    (his) {
+                      his.sync = true;
+                      his.serverItemId = serverItemId;
+                    },
                     true,
                   );
                 }

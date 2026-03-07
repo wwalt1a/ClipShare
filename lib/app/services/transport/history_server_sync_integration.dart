@@ -62,10 +62,13 @@ class HistoryServerSyncIntegration extends GetxService {
           return;
         }
         // 添加 addItem 操作，fileId 使用服务器返回的 ID
+        // 提前将 serverItemId 设为本地 historyId（与服务端存储一致），防止重复添加
+        final serverItemId = history.id!.toString();
+        await dbService.historyDao.updateServerFields(history.id, serverItemId, null);
         final addItemOp = ServerOperationQueue(
           type: 'addItem',
           itemId: history.id!,
-          serverItemId: history.serverItemId,
+          serverItemId: serverItemId,
           fileId: uploadedFileId,
           itemType: itemType,
           createdAt: ServerOperationQueue.dateTimeToTimestamp(DateTime.parse(history.time)),
@@ -78,11 +81,15 @@ class HistoryServerSyncIntegration extends GetxService {
         return;
       }
 
-      // 添加 addItem 操作
+      // 添加 addItem 操作（提前设置 serverItemId 防止重启后重复添加）
+      final serverItemId = history.id!.toString();
+      if (history.serverItemId == null || history.serverItemId!.isEmpty) {
+        await dbService.historyDao.updateServerFields(history.id, serverItemId, null);
+      }
       final addItemOp = ServerOperationQueue(
         type: 'addItem',
         itemId: history.id!,
-        serverItemId: history.serverItemId,
+        serverItemId: serverItemId,
         content: encryptedContent,
         fileId: itemType == 'image' ? history.content : null,
         itemType: itemType,
