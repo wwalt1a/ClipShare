@@ -74,7 +74,7 @@ class ServerQueueSyncService extends GetxService {
           'content': encryptedContent,
           'fileId': itemType == 'image' ? history.content : null,
           'tags': encryptedTags,
-          'createdAt': history.time,
+          'createdAt': DateTime.tryParse(history.time)?.toUtc().toIso8601String() ?? history.time,
         });
 
         if (history.serverItemId == null) {

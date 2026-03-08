@@ -1758,19 +1758,20 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
     }
     Log.info(tag, '_broadcastGroupMemberAdd: 已通知 ${pairedDevices.length} 个现有成员新成员加入 ${newDev.name}');
 
-    // 2. 告诉新成员C：现有所有成员是谁
+    // 2. 延迟1秒后告诉新成员C：现有所有成员是谁（确保现有成员已写入C的信息）
     final existingMembersData = pairedDevices.map((d) => {
       'guid': d.guid,
       'devName': d.name,
-      'platform': d.type,
-      'appVersion': '',
+      'type': d.type,
       'address': d.address ?? '',
     }).toList();
-    newDev.sendData(MsgType.groupMemberAdd, {
-      'members': existingMembersData,
-      'isBulk': true,
+    Future.delayed(1.s, () {
+      newDev.sendData(MsgType.groupMemberAdd, {
+        'members': existingMembersData,
+        'isBulk': true,
+      });
+      Log.info(tag, '_broadcastGroupMemberAdd: 已向新成员 ${newDev.name} 发送 ${existingMembersData.length} 个现有成员信息');
     });
-    Log.info(tag, '_broadcastGroupMemberAdd: 已向新成员 ${newDev.name} 发送 ${existingMembersData.length} 个现有成员信息');
   }
 
   /// 群组配对：收到新成员加入通知，写入本地数据库并自动连接
