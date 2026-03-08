@@ -8,6 +8,7 @@ import 'package:clipshare/app/data/repository/entity/tables/device.dart';
 import 'package:clipshare/app/handlers/sync/abstract_data_sender.dart';
 import 'package:clipshare/app/listeners/screen_opened_listener.dart';
 import 'package:clipshare/app/listeners/sync_listener.dart';
+import 'package:clipshare/app/modules/search_module/search_controller.dart' as search_module;
 import 'package:clipshare/app/services/device_service.dart';
 import 'package:clipshare/app/utils/extensions/device_extension.dart';
 import 'package:clipshare/app/utils/extensions/number_extension.dart';
@@ -184,6 +185,10 @@ class HistoryController extends GetxController with WidgetsBindingObserver imple
     return dbService.historyDao.getHistoriesTop100(appConfig.userId).then((lst) {
       _tempList.assignAll(ClipData.fromList(lst));
       debounceUpdate();
+      // 同步刷新搜索页（Windows大屏模式下搜索页常驻，不会自动重建）
+      if (Get.isRegistered<search_module.SearchController>()) {
+        Get.find<search_module.SearchController>().refreshData();
+      }
     });
   }
 
