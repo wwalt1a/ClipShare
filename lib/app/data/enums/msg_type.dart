@@ -41,6 +41,10 @@ enum MsgType {
   file,
   //同步密码（配对成功后发起方传递给对方）
   syncKey,
+  //群组：通知新成员加入（中转服务器模式）
+  groupMemberAdd,
+  //群组：通知成员离开（中转服务器模式）
+  groupMemberLeave,
   //未知key
   unknown;
 

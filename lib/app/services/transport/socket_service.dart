@@ -15,6 +15,7 @@ import 'package:clipshare/app/data/models/dev_socket.dart';
 import 'package:clipshare/app/data/models/message_data.dart';
 import 'package:clipshare/app/data/models/version.dart';
 import 'package:clipshare/app/data/repository/entity/tables/app_info.dart';
+import 'package:clipshare/app/data/repository/entity/tables/device.dart';
 import 'package:clipshare/app/data/repository/entity/tables/history.dart';
 import 'package:clipshare/app/data/repository/entity/tables/history_tag.dart';
 import 'package:clipshare/app/modules/history_module/history_controller.dart';
@@ -743,12 +744,29 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
           Get.back();
           _pairing = false;
         }
-        // 配对成功 - 不再自动同步密码，用户需手动在两个设备上设置相同密码
+        // 配对成功后，在服务器专属模式下执行群组广播
+        if (result && appConfig.isServerOnlyMode) {
+          _broadcastGroupMemberAdd(dev);
+        }
         break;
 
       /// 接收对方发来的同步密码（已废弃 - 改为手动输入）
       case MsgType.syncKey:
         Log.info(tag, "收到同步密码消息，但已改为手动输入模式，忽略此消息");
+        break;
+
+      /// 群组：收到新成员加入通知（中转服务器模式）
+      case MsgType.groupMemberAdd:
+        if (appConfig.isServerOnlyMode) {
+          await _onGroupMemberAdd(msg.data);
+        }
+        break;
+
+      /// 群组：收到成员离开通知（中转服务器模式）
+      case MsgType.groupMemberLeave:
+        if (appConfig.isServerOnlyMode) {
+          await _onGroupMemberLeave(msg.data);
+        }
         break;
 
       ///取消配对
@@ -1705,6 +1723,118 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
       Log.debug(tag, skt.dev.name);
       await skt.socket.send(msg.toJson());
     }
+  }
+
+  /// 群组配对：广播自己离开群组给所有已配对设备
+  Future<void> broadcastGroupLeave() async {
+    if (!appConfig.isServerOnlyMode) return;
+    final leaveData = {'guid': appConfig.device.guid};
+    final pairedSockets = _devSockets.values.where((ds) => ds.isPaired).toList();
+    for (final ds in pairedSockets) {
+      ds.dev.sendData(MsgType.groupMemberLeave, leaveData);
+    }
+    Log.info(tag, 'broadcastGroupLeave: 已向 ${pairedSockets.length} 个设备广播离开群组');
+  }
+
+  /// 群组配对：A配对C成功后，向所有已配对设备广播新成员，并将现有成员告知C
+  Future<void> _broadcastGroupMemberAdd(DevInfo newDev) async {
+    if (!appConfig.isServerOnlyMode) return;
+    // 获取所有已配对设备（排除新成员和本机）
+    final allDevices = await dbService.deviceDao.getAllDevices(appConfig.userId);
+    final pairedDevices = allDevices.where(
+      (d) => d.isPaired && d.guid != newDev.guid && d.guid != appConfig.device.guid,
+    ).toList();
+    if (pairedDevices.isEmpty) return;
+
+    // 1. 告诉现有所有成员：新成员C加入了
+    final newMemberData = {
+      'guid': newDev.guid,
+      'devName': newDev.name,
+      'type': newDev.type,
+    };
+    for (final dev in pairedDevices) {
+      final devInfo = DevInfo.fromDevice(dev);
+      devInfo.sendData(MsgType.groupMemberAdd, newMemberData);
+    }
+    Log.info(tag, '_broadcastGroupMemberAdd: 已通知 ${pairedDevices.length} 个现有成员新成员加入 ${newDev.name}');
+
+    // 2. 告诉新成员C：现有所有成员是谁
+    final existingMembersData = pairedDevices.map((d) => {
+      'guid': d.guid,
+      'devName': d.name,
+      'platform': d.type,
+      'appVersion': '',
+      'address': d.address ?? '',
+    }).toList();
+    newDev.sendData(MsgType.groupMemberAdd, {
+      'members': existingMembersData,
+      'isBulk': true,
+    });
+    Log.info(tag, '_broadcastGroupMemberAdd: 已向新成员 ${newDev.name} 发送 ${existingMembersData.length} 个现有成员信息');
+  }
+
+  /// 群组配对：收到新成员加入通知，写入本地数据库并自动连接
+  Future<void> _onGroupMemberAdd(Map<String, dynamic> data) async {
+    if (!appConfig.isServerOnlyMode) return;
+    final devService = Get.find<DeviceService>();
+
+    Future<void> addMember(Map<String, dynamic> memberData) async {
+      final guid = memberData['guid'] as String?;
+      if (guid == null || guid.isEmpty || guid == appConfig.device.guid) return;
+      // 检查是否已配对
+      final existing = await dbService.deviceDao.getById(guid, appConfig.userId);
+      if (existing != null && existing.isPaired) {
+        Log.info(tag, '_onGroupMemberAdd: 已存在 $guid，跳过');
+        return;
+      }
+      final dev = Device(
+        guid: guid,
+        devName: memberData['devName'] as String? ?? guid,
+        uid: appConfig.userId,
+        type: memberData['type'] as String? ?? 'unknown',
+        address: memberData['address'] as String?,
+        isPaired: true,
+      );
+      await devService.addOrUpdate(dev);
+      Log.info(tag, '_onGroupMemberAdd: 已添加群组成员 ${dev.devName}($guid)');
+      // 自动通过中转连接新成员
+      if (_forwardClient != null) {
+        manualConnectByForward(guid);
+      }
+    }
+
+    if (data['isBulk'] == true) {
+      final members = (data['members'] as List<dynamic>?) ?? [];
+      for (final m in members) {
+        await addMember(m as Map<String, dynamic>);
+      }
+    } else {
+      await addMember(data);
+    }
+  }
+
+  /// 群组配对：收到成员离开通知，从本地数据库移除该设备
+  Future<void> _onGroupMemberLeave(Map<String, dynamic> data) async {
+    if (!appConfig.isServerOnlyMode) return;
+    final guid = data['guid'] as String?;
+    if (guid == null || guid.isEmpty) return;
+    final devService = Get.find<DeviceService>();
+    // 断开连接
+    if (_devSockets.containsKey(guid)) {
+      _onDevDisconnected(guid, autoReconnect: false);
+    }
+    // 标记为未配对（保留设备记录）
+    final existing = await dbService.deviceDao.getById(guid, appConfig.userId);
+    if (existing != null) {
+      existing.isPaired = false;
+      await dbService.deviceDao.updateDevice(existing);
+    }
+    Log.info(tag, '_onGroupMemberLeave: 成员 $guid 已离开群组');
+    // 提示用户重置同步密码
+    Global.showTipsDialog(
+      context: Get.context!,
+      text: '设备 ${devService.getName(guid)} 已离开群组，建议重新设置同步密码以保证安全。',
+    );
   }
 
   /// 发送组播消息

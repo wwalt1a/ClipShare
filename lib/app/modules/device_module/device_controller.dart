@@ -551,6 +551,10 @@ class DeviceController extends GetxController with GetSingleTickerProviderStateM
                                   {},
                                 );
                               }
+                              // 服务器专属模式：广播自己离开群组给所有已配对设备
+                              if (appConfig.isServerOnlyMode) {
+                                sktService.broadcastGroupLeave();
+                              }
                               //更新配对状态为未配对
                               device.isPaired = false;
                               dbService.deviceDao.updateDevice(device).then((cnt) {
