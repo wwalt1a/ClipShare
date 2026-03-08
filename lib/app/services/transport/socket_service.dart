@@ -1797,9 +1797,9 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
       );
       await devService.addOrUpdate(dev);
       Log.info(tag, '_onGroupMemberAdd: 已添加群组成员 ${dev.devName}($guid)');
-      // 自动通过中转连接新成员
+      // 自动通过中转连接新成员（延迟2秒，等对方也完成数据库写入）
       if (_forwardClient != null) {
-        manualConnectByForward(guid);
+        Future.delayed(2.s, () => manualConnectByForward(guid));
       }
     }
 
