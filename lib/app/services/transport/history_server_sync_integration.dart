@@ -231,10 +231,10 @@ class HistoryServerSyncIntegration extends GetxService {
         // 操作应用完成后刷新 UI
         try {
           if (Get.isRegistered<HistoryController>()) {
-            Get.find<HistoryController>().refreshData();
+            await Get.find<HistoryController>().refreshData();
           }
-        } catch (e) {
-          Log.warn(tag, "periodicSync: 刷新UI失败 $e");
+        } catch (e, stack) {
+          Log.warn(tag, "periodicSync: 刷新UI失败 $e", stack);
         }
       }
 

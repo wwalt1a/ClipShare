@@ -858,7 +858,18 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
     bool manual = false,
   }) async {
     if (appConfig.isServerOnlyMode) {
-      Log.debug(tag, "服务器专属模式，跳过P2P设备发现");
+      Log.debug(tag, "服务器专属模式，跳过P2P设备发现，仅执行中转发现");
+      //服务器专属模式下仍需通过中转服务器发现并连接配对设备
+      if (_forwardClient == null) {
+        await connectForwardServer(true);
+      } else {
+        final forwardTasks = await _forwardDiscovering();
+        TaskRunner<void>(
+          initialTasks: forwardTasks,
+          onFinish: () async {},
+          concurrency: 50,
+        );
+      }
       return;
     }
     if (_discovering) {
@@ -1504,7 +1515,7 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
   void onScreenOpened() {
     screenOpened = true;
     if (_forwardClient == null) {
-      connectForwardServer();
+      connectForwardServer(true);
     }
     startDiscoveryDevices(scan: appConfig.enableAutoSyncOnScreenOpened);
     startHeartbeatTest();
