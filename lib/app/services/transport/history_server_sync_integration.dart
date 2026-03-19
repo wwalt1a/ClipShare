@@ -234,7 +234,7 @@ class HistoryServerSyncIntegration extends GetxService {
             await Get.find<HistoryController>().refreshData();
           }
         } catch (e, stack) {
-          Log.warn(tag, "periodicSync: 刷新UI失败 $e", stack);
+          Log.warn(tag, "periodicSync: 刷新UI失败 $e\n$stack");
         }
       }
 
