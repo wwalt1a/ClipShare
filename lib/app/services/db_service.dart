@@ -139,7 +139,7 @@ class DbService extends GetxService {
       migration9to10,
     ]).build();
     version = await _db.database.database.getVersion();
-    await _repairNullHistoryRecords();
+    await repairNullHistoryRecords();
     return this;
   }
 
@@ -151,7 +151,7 @@ class DbService extends GetxService {
 
   ///修复历史记录表中关键字段为 null 的记录
   ///这些记录会导致 Floor 生成的 mapper 在类型转换时崩溃
-  Future<void> _repairNullHistoryRecords() async {
+  Future<void> repairNullHistoryRecords() async {
     try {
       final count = await dbExecutor.rawDelete(
         'DELETE FROM History WHERE time IS NULL OR content IS NULL OR type IS NULL OR devId IS NULL',

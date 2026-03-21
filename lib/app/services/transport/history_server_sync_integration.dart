@@ -229,6 +229,8 @@ class HistoryServerSyncIntegration extends GetxService {
       if (operations.isNotEmpty) {
         Log.info(tag, "periodicSync: 拉取到 ${operations.length} 条操作，应用到本地");
         await _applyOperations(operations);
+        // 修复可能的 null 记录，防止 getHistoriesTop100 的 Floor 映射器崩溃
+        await dbService.repairNullHistoryRecords();
         // 操作应用完成后刷新 UI
         try {
           if (Get.isRegistered<HistoryController>()) {
