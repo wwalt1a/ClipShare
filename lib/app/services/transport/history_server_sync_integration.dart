@@ -209,7 +209,8 @@ class HistoryServerSyncIntegration extends GetxService {
         final success = await queueSyncService.initSync();
         if (success) {
           Log.info(tag, "periodicSync: 首次全量同步成功");
-          await appConfig.setLastServerPullTime(DateTime.now().millisecondsSinceEpoch);
+          // 设为极早时间（非0避免重复触发initSync），使后续pull能获取全部历史操作
+          await appConfig.setLastServerPullTime(1);
         } else {
           Log.error(tag, "periodicSync: 首次全量同步失败");
           return;
@@ -425,6 +426,13 @@ class HistoryServerSyncIntegration extends GetxService {
 
     // 解密标签名
     final tagName = serverSyncService.decrypt(encryptedTagName);
+
+    // 检查标签是否已存在
+    final existingTag = await dbService.historyTagDao.getByHistoryIdAndName(history.id, tagName);
+    if (existingTag != null) {
+      Log.info(tag, "_applyAddTag: 标签已存在，跳过 historyId=${history.id}, tag=$tagName");
+      return;
+    }
 
     // 确保tagService已初始化
     if (tagService == null && Get.isRegistered<TagService>()) {
