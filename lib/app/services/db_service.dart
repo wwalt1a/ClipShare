@@ -140,6 +140,7 @@ class DbService extends GetxService {
       migration10to11,
     ]).build();
     version = await _db.database.database.getVersion();
+    await repairNullHistoryRecords();
     return this;
   }
 
@@ -147,6 +148,21 @@ class DbService extends GetxService {
   Future<void> onClose() {
     debugPrint("db service onClose");
     return _db.close();
+  }
+
+  ///修复历史记录表中关键字段为 null 的记录
+  ///这些记录会导致 Floor 生成的 mapper 在类型转换时崩溃
+  Future<void> repairNullHistoryRecords() async {
+    try {
+      final count = await dbExecutor.rawDelete(
+        'DELETE FROM History WHERE time IS NULL OR content IS NULL OR type IS NULL OR devId IS NULL',
+      );
+      if (count > 0) {
+        Log.warn(tag, "已清理 $count 条关键字段为空的异常历史记录");
+      }
+    } catch (e) {
+      Log.error(tag, "修复历史记录失败: $e");
+    }
   }
 
   static Future<bool> hasColumnInTable(sqflite.Database database, String tableName, String columnName) async {

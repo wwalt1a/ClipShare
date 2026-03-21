@@ -174,6 +174,8 @@ class ServerQueueSyncService extends GetxService {
             final ids = operations.map((o) => o.id!).toList();
             await dbService.serverOpQueueDao.markAllAsSynced(ids);
             // 更新 addItem 操作对应的本地历史记录 sync=true 和 serverItemId（数据库+内存）
+            // 修复可能的 null 记录，防止后续 refreshData 时 Floor 映射器崩溃
+            await dbService.repairNullHistoryRecords();
             if (Get.isRegistered<HistoryController>()) {
               final historyController = Get.find<HistoryController>();
               for (final op in operations) {
