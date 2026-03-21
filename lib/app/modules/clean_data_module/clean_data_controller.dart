@@ -447,11 +447,15 @@ class CleanDataController extends GetxController implements DeviceRemoveListener
     final parts = histories.partition(1000);
     for (var part in parts) {
       final ids = part.map((item) => item.id).toList().cast<int>();
-      // 收集服务器条目 ID，用于同步删除到服务器
-      final serverIds = part
-          .where((item) => item.serverItemId != null)
-          .map((item) => item.serverItemId!)
-          .toList();
+      // 先同步删除到服务器（使用每个条目自身的 id 和 serverItemId 确保配对正确）
+      if (Get.isRegistered<HistoryServerSyncIntegration>()) {
+        final syncIntegration = Get.find<HistoryServerSyncIntegration>();
+        for (var item in part) {
+          if (item.serverItemId != null) {
+            await syncIntegration.onHistoryDeleted(item.id, item.serverItemId);
+          }
+        }
+      }
       //先删除操作记录
       await dbService.opRecordDao.deleteByDataIds(ids.map((item) => item.toString()).toList());
       //删除同步记录
@@ -462,15 +466,6 @@ class CleanDataController extends GetxController implements DeviceRemoveListener
       await dbService.historyDao.deleteByIds(ids, uid);
       //移除未使用的剪贴板来源信息
       await sourceService.removeNotUsed();
-      // 新的队列同步：批量添加删除操作到队列
-      if (serverIds.isNotEmpty && Get.isRegistered<HistoryServerSyncIntegration>()) {
-        final syncIntegration = Get.find<HistoryServerSyncIntegration>();
-        for (int i = 0; i < ids.length; i++) {
-          if (i < serverIds.length) {
-            await syncIntegration.onHistoryDeleted(ids[i], serverIds[i]);
-          }
-        }
-      }
       //删除文件
       if (removeFiles) {
         //提取所有文件路径
