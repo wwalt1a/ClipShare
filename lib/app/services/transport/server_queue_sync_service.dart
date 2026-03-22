@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:clipshare/app/data/repository/entity/tables/history.dart';
 import 'package:clipshare/app/data/repository/entity/tables/server_operation_queue.dart';
@@ -17,6 +18,7 @@ class ServerQueueSyncService extends GetxService {
   final appConfig = Get.find<ConfigService>();
   final dbService = Get.find<DbService>();
   final serverSyncService = Get.find<ServerSyncService>();
+  Timer? _pushDebounceTimer;
 
   bool get _isEnabled =>
       appConfig.forwardServer != null && appConfig.hasSyncPassword;
@@ -302,11 +304,14 @@ class ServerQueueSyncService extends GetxService {
     return [];
   }
 
-  /// 添加操作到队列
+  /// 添加操作到队列（防抖推送，500ms内的操作合并为一次批量推送）
   Future<void> addOperation(ServerOperationQueue operation) async {
     await dbService.serverOpQueueDao.add(operation);
-    // 尝试立即推送
-    await pushQueue();
+    // 取消上一次的延迟推送，重新计时
+    _pushDebounceTimer?.cancel();
+    _pushDebounceTimer = Timer(const Duration(milliseconds: 500), () {
+      pushQueue();
+    });
   }
 
   /// 清理队列
