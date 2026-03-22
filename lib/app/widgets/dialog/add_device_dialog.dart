@@ -329,6 +329,11 @@ class _AddDeviceDialogState extends State<AddDeviceDialog> {
                             Get.back();
                             return;
                           }
+                          // 中转连接失败，重置状态
+                          setState(() {
+                            _connectErr = true;
+                            _connecting = false;
+                          });
                         } else {
                           sktService
                               .manualConnect(

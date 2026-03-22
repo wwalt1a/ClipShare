@@ -82,6 +82,9 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
   bool screenOpened = true;
   Future? autoCloseConnTimer;
   bool _autoConnForwardServer = true;
+  int _forwardReconnectAttempts = 0;
+  static const int _maxForwardReconnectAttempts = 5;
+  DateTime? _lastForwardConnectTime;
 
   String? get forwardServerHost {
     if (!appConfig.enableForward || appConfig.forwardWay != ForwardWay.server) return null;
@@ -326,6 +329,22 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
     if (_forwardClient != null) {
       disConnectForwardServer();
     }
+    // 防止快速重连循环
+    if (_lastForwardConnectTime != null) {
+      final elapsed = DateTime.now().difference(_lastForwardConnectTime!);
+      if (elapsed.inSeconds < 2) {
+        _forwardReconnectAttempts++;
+        if (_forwardReconnectAttempts >= _maxForwardReconnectAttempts) {
+          Log.warn(tag, "中转服务器重连次数超限($_forwardReconnectAttempts次)，停止重连");
+          _autoConnForwardServer = false;
+          _forwardReconnectAttempts = 0;
+          return;
+        }
+      } else {
+        _forwardReconnectAttempts = 0;
+      }
+    }
+    _lastForwardConnectTime = DateTime.now();
     if (appConfig.forwardWay != ForwardWay.server) {
       Log.debug(tag, "connectForwardServer forward way is ${appConfig.forwardWay.name}");
       return;
@@ -356,9 +375,10 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
           _stopJudgeForwardClientAlive();
           Log.debug(tag, "forwardClient done");
           if (_autoConnForwardServer) {
-            Log.debug(tag, "尝试重连中转");
+            final delay = min(1000 * pow(2, _forwardReconnectAttempts).toInt(), 30000);
+            Log.debug(tag, "尝试重连中转，延迟 ${delay}ms");
             Future.delayed(
-              1000.ms,
+              Duration(milliseconds: delay),
               () => connectForwardServer(true),
             );
           }
@@ -368,6 +388,7 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
         },
         onConnected: (self) {
           _autoConnForwardServer = true;
+          _forwardReconnectAttempts = 0;
           Log.debug(tag, "forwardClient onConnected");
           _updateForwardConnectedStatus();
           _startJudgeForwardClientAlivePeriod();
@@ -402,9 +423,10 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
       _updateForwardDisConnectedStatus();
       Log.debug(tag, "connect forward server failed $e");
       if (_autoConnForwardServer) {
-        Log.debug(tag, "尝试重连中转");
+        final delay = min(1000 * pow(2, _forwardReconnectAttempts).toInt(), 30000);
+        Log.debug(tag, "尝试重连中转，延迟 ${delay}ms");
         Future.delayed(
-          1000.ms,
+          Duration(milliseconds: delay),
           () => connectForwardServer(true),
         );
       }
@@ -740,7 +762,7 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
         bool result = msg.data["result"];
         _onDevPaired(dev, msg.userId, result, address);
         ipSetTemp.removeWhere((v) => v == address);
-        if (_pairing = true) {
+        if (_pairing == true) {
           Get.back();
           _pairing = false;
         }
@@ -1031,47 +1053,11 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
   Future<List<Future<void> Function()>> _pairedDiscovering() async {
     List<Future<void> Function()> tasks = List.empty(growable: true);
     var lst = await dbService.deviceDao.getAllDevices(appConfig.userId);
-    var devices = lst.where((dev) => dev.address != null).toList();
-    final isWifi = appConfig.currentNetWorkType.value == ConnectivityResult.wifi;
-
-    //region 查找中转服务的ip
-    String? forwardIp;
-    //存在且不为ipv4时才查询
-    if (forwardServerHost != null) {
-      //如果是域名就进行查询对应ip
-      if (!forwardServerHost!.isIPv4) {
-        try {
-          final addresses = await InternetAddress.lookup(forwardServerHost!);
-          for (var address in addresses) {
-            if (address.type != InternetAddressType.IPv4) {
-              continue;
-            }
-            forwardIp = address.address;
-          }
-        } catch (_) {}
-      } else {
-        forwardIp = forwardServerHost;
-      }
-    }
-    //endregion
-
+    var devices = lst.where((dev) => dev.isPaired).toList();
+    // 所有配对设备强制走中转
     for (var dev in devices) {
-      if (!dev.address!.contains(":")) {
-        //如果先前通过存储服务连接，会解析失败，直接跳过
-        continue;
-      }
-      var [ip, port] = dev.address!.split(":");
-      //检测当前网络环境，以下条件直接直接连接中转，而不是走完整设备发现流程
-      //1. 不是 WiFi 且为移动设备
-      //2. 不是 WiFi 且地址为中转地址
-      if (!isWifi) {
-        if (PlatformExt.isMobile || forwardIp == ip) {
-          print("connect by forward ${dev.name}(${dev.guid})");
-          tasks.add(() => manualConnectByForward(dev.guid));
-          continue;
-        }
-      }
-      tasks.add(() => manualConnect(ip, port: int.parse(port)));
+      if (_devSockets.containsKey(dev.guid)) continue;
+      tasks.add(() => manualConnectByForward(dev.guid));
     }
     return tasks;
   }
@@ -1653,40 +1639,28 @@ class SocketService extends GetxService with ScreenOpenedObserver, DataSender {
 
   ///重连设备，由于对向设备的连接可能持续持有一小段时间（视心跳时间而定）
   ///会在一定时间内持续尝试重连，此处默认 3 分钟
-  void _attemptReconnect(DevSocket devSkt) async {    final startTime = DateTime.now();
-    var endTime = DateTime.now();
-    var diffMinutes = endTime.difference(startTime).inMinutes;
-    final ip = devSkt.socket.ip;
-    final port = devSkt.socket.port;
-    final String devNameAddr = "${devSkt.dev.name}($ip:$port)";
-    //三分钟内持续尝试
-    while (diffMinutes < 3) {
-      //延迟2s
+  void _attemptReconnect(DevSocket devSkt) async {
+    final startTime = DateTime.now();
+    // 所有配对设备强制走中转重连
+    while (DateTime.now().difference(startTime).inMinutes < 3) {
       await Future.delayed(2.s);
       if (_devSockets.containsKey(devSkt.dev.guid)) {
-        Log.debug(tag, "重连成功 $devNameAddr");
-        //已经成功连接，停止重连
+        Log.debug(tag, "重连成功 ${devSkt.dev.name}");
         return;
       }
       Log.debug(tag, "尝试重连 ${devSkt.dev.name}");
       try {
-        if (devSkt.socket.isForwardMode) {
-          if (_forwardClient != null) {
-            await manualConnectByForward(devSkt.dev.guid);
-          } else {
-            Log.warn(tag, "中转连接已关闭");
-            break;
-          }
+        if (_forwardClient != null) {
+          await manualConnectByForward(devSkt.dev.guid);
         } else {
-          await manualConnect(ip, port: port);
+          Log.warn(tag, "中转连接已关闭，无法重连");
+          break;
         }
       } catch (err) {
         Log.warn(tag, "attempt reconnect error: $err");
       }
-      endTime = DateTime.now();
-      diffMinutes = endTime.difference(startTime).inMinutes;
     }
-    Log.debug(tag, "重连失败 $devNameAddr");
+    Log.debug(tag, "重连失败 ${devSkt.dev.name}");
   }
 
   ///向兼容的设备发送消息

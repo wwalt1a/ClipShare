@@ -504,14 +504,11 @@ class DeviceController extends GetxController with GetSingleTickerProviderStateM
                               );
                             }
                           } else {
-                            if (protocol == TransportProtocol.server) {
-                              sktService.manualConnectByForward(device.guid);
-                            } else if (protocol == TransportProtocol.direct) {
-                              var address = device.address;
-                              var [ip, port] = address!.split(":");
-                              sktService.manualConnect(ip, port: port.toInt());
-                            } else {
+                            if (protocol == TransportProtocol.webdav || protocol == TransportProtocol.s3) {
                               storageService.connectDevice(devInfo.guid);
+                            } else {
+                              // 所有配对设备强制走中转
+                              sktService.manualConnectByForward(device.guid);
                             }
                           }
                           Navigator.pop(context);
